@@ -1,95 +1,135 @@
 // ============================================================
 //  База данных мануфактуры «Матрёшка»
-//  Используется встроенный модуль Node.js node:sqlite (Node 22.5+)
-//  Файл базы: db.sqlite
+//
+//  Два режима работы (выбирается автоматически):
+//   • ЛОКАЛЬНО (на вашем компьютере) — встроенный SQLite (node:sqlite),
+//     файл db.sqlite. Ничего настраивать не нужно.
+//   • НА VERCEL (в интернете) — облачная база Turso (libSQL по HTTPS).
+//     Включается, если заданы переменные окружения
+//     TURSO_DATABASE_URL и TURSO_AUTH_TOKEN.
+//
+//  Весь остальной код работает через единый асинхронный интерфейс q.*
 // ============================================================
 
 'use strict';
 
-const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
-const bcrypt = require('bcryptjs');
 
-// Открываем (или создаём) файл базы данных рядом с проектом
-const db = new DatabaseSync(path.join(__dirname, 'db.sqlite'));
+const TURSO_URL = process.env.TURSO_DATABASE_URL || '';
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || '';
 
-// Включаем поддержку внешних ключей
-db.exec('PRAGMA foreign_keys = ON;');
+// rawExecute({ sql, args }) → { rows, lastInsertRowid, rowsAffected }
+let rawExecute;
+let DRIVER;
+
+if (TURSO_URL) {
+  // -------- Продакшн: облачная база Turso (без нативных модулей) --------
+  DRIVER = 'turso';
+  const { createClient } = require('@libsql/client/web');
+  const client = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
+  rawExecute = async ({ sql, args = [] }) => {
+    const r = await client.execute({ sql, args });
+    return {
+      rows: r.rows.map(row => ({ ...row })),
+      lastInsertRowid: r.lastInsertRowid != null ? Number(r.lastInsertRowid) : undefined,
+      rowsAffected: r.rowsAffected
+    };
+  };
+} else {
+  // -------- Локальная разработка: встроенный SQLite (node:sqlite) --------
+  DRIVER = 'sqlite';
+  const { DatabaseSync } = require('node:sqlite');
+  const sdb = new DatabaseSync(path.join(__dirname, 'db.sqlite'));
+  sdb.exec('PRAGMA foreign_keys = ON;');
+  sdb.exec('PRAGMA journal_mode = WAL;');
+  sdb.exec('PRAGMA busy_timeout = 5000;');
+  const isWrite = sql => /^\s*(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE|PRAGMA|BEGIN|COMMIT|ROLLBACK)/i.test(sql);
+  rawExecute = async ({ sql, args = [] }) => {
+    const stmt = sdb.prepare(sql);
+    if (isWrite(sql)) {
+      const info = stmt.run(...args);
+      return { rows: [], lastInsertRowid: Number(info.lastInsertRowid), rowsAffected: info.changes };
+    }
+    const rows = stmt.all(...args).map(row => ({ ...row }));
+    return { rows, rowsAffected: 0 };
+  };
+}
+
+// Единый асинхронный интерфейс для запросов
+const q = {
+  all: async (sql, args = []) => (await rawExecute({ sql, args })).rows,
+  get: async (sql, args = []) => { const r = await rawExecute({ sql, args }); return r.rows[0] || null; },
+  run: async (sql, args = []) => { const r = await rawExecute({ sql, args }); return { lastInsertRowid: r.lastInsertRowid, rowsAffected: r.rowsAffected }; }
+};
 
 // ------------------------------------------------------------
-//  Создание таблиц согласно схеме
+//  Создание таблиц (каждый оператор — отдельно, так требует libSQL)
 // ------------------------------------------------------------
-function initSchema() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      name          TEXT    NOT NULL,
-      phone         TEXT    NOT NULL UNIQUE,
-      password_hash TEXT    NOT NULL,
-      addresses     TEXT    DEFAULT '[]',   -- адреса доставки (JSON)
-      favorites     TEXT    DEFAULT '[]',   -- избранные товары (JSON массив id)
-      created_at    TEXT    DEFAULT (datetime('now'))
-    );
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT    NOT NULL,
+    phone         TEXT    NOT NULL UNIQUE,
+    password_hash TEXT    NOT NULL,
+    addresses     TEXT    DEFAULT '[]',
+    favorites     TEXT    DEFAULT '[]',
+    created_at    TEXT    DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS products (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug          TEXT    UNIQUE,
+    name          TEXT    NOT NULL,
+    description   TEXT    DEFAULT '',
+    composition   TEXT    DEFAULT '',
+    material      TEXT    DEFAULT '',
+    price         REAL    NOT NULL,
+    category      TEXT    DEFAULT '',
+    stock         INTEGER DEFAULT 0,
+    is_popular    INTEGER DEFAULT 0,
+    images        TEXT    DEFAULT '[]',
+    created_at    TEXT    DEFAULT (datetime('now')),
+    updated_at    TEXT    DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS orders (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id          INTEGER,
+    customer_name    TEXT    NOT NULL,
+    customer_phone   TEXT    NOT NULL,
+    delivery_method  TEXT    NOT NULL,
+    delivery_address TEXT    DEFAULT '',
+    payment_method   TEXT    NOT NULL,
+    comment          TEXT    DEFAULT '',
+    gift_wrap        INTEGER DEFAULT 0,
+    promo_code       TEXT    DEFAULT '',
+    status           TEXT    DEFAULT 'Новый',
+    total_price      REAL    NOT NULL,
+    created_at       TEXT    DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS order_items (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id      INTEGER NOT NULL,
+    product_id    INTEGER,
+    product_name  TEXT    NOT NULL,
+    product_price REAL    NOT NULL,
+    quantity      INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id  INTEGER NOT NULL,
+    user_id     INTEGER,
+    author_name TEXT    DEFAULT 'Покупатель',
+    rating      INTEGER NOT NULL,
+    text        TEXT    DEFAULT '',
+    created_at  TEXT    DEFAULT (datetime('now'))
+  )`
+];
 
-    CREATE TABLE IF NOT EXISTS products (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      slug          TEXT    UNIQUE,
-      name          TEXT    NOT NULL,
-      description   TEXT    DEFAULT '',
-      composition   TEXT    DEFAULT '',     -- состав / материалы (текст)
-      material      TEXT    DEFAULT '',     -- материал (для фильтра)
-      price         REAL    NOT NULL,
-      category      TEXT    DEFAULT '',
-      stock         INTEGER DEFAULT 0,
-      is_popular    INTEGER DEFAULT 0,
-      images        TEXT    DEFAULT '[]',   -- массив изображений (JSON)
-      created_at    TEXT    DEFAULT (datetime('now')),
-      updated_at    TEXT    DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS orders (
-      id               INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id          INTEGER,
-      customer_name    TEXT    NOT NULL,
-      customer_phone   TEXT    NOT NULL,
-      delivery_method  TEXT    NOT NULL,
-      delivery_address TEXT    DEFAULT '',
-      payment_method   TEXT    NOT NULL,
-      comment          TEXT    DEFAULT '',
-      gift_wrap        INTEGER DEFAULT 0,
-      promo_code       TEXT    DEFAULT '',
-      status           TEXT    DEFAULT 'Новый',
-      total_price      REAL    NOT NULL,
-      created_at       TEXT    DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS order_items (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_id      INTEGER NOT NULL,
-      product_id    INTEGER,
-      product_name  TEXT    NOT NULL,
-      product_price REAL    NOT NULL,
-      quantity      INTEGER NOT NULL,
-      FOREIGN KEY (order_id) REFERENCES orders(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS reviews (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_id  INTEGER NOT NULL,
-      user_id     INTEGER,
-      author_name TEXT    DEFAULT 'Покупатель',
-      rating      INTEGER NOT NULL,
-      text        TEXT    DEFAULT '',
-      created_at  TEXT    DEFAULT (datetime('now')),
-      FOREIGN KEY (product_id) REFERENCES products(id)
-    );
-  `);
+async function initSchema() {
+  for (const stmt of SCHEMA) await rawExecute({ sql: stmt, args: [] });
 }
 
 // ------------------------------------------------------------
-//  Генератор SVG-изображения-заглушки (data URL)
-//  Позволяет показывать красивые карточки товаров без внешних файлов
+//  Генератор SVG-заглушки для товаров (data URL, без внешних файлов)
 // ------------------------------------------------------------
 function svgPlaceholder(title, bg, accent) {
   const safe = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -113,11 +153,11 @@ function slugify(text) {
 }
 
 // ------------------------------------------------------------
-//  Начальные данные (товары, отзывы, тестовый пользователь)
+//  Начальные данные (товары, отзывы). Тестового аккаунта нет.
 // ------------------------------------------------------------
-function seed() {
-  const count = db.prepare('SELECT COUNT(*) AS c FROM products').get().c;
-  if (count > 0) return; // уже заполнено
+async function seed() {
+  const row = await q.get('SELECT COUNT(*) AS c FROM products');
+  if (Number(row.c) > 0) return; // уже заполнено
 
   const CREAM = '#f3e7d3', TERRA = '#c8613f', GOLD = '#d9a441', RED = '#b23a2e';
 
@@ -172,11 +212,6 @@ function seed() {
       composition: 'Береста.', bg: '#ecdcc2', accent: GOLD }
   ];
 
-  const insert = db.prepare(`
-    INSERT INTO products (slug, name, description, composition, material, price, category, stock, is_popular, images)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
   const seenSlugs = new Set();
   for (const p of products) {
     let base = slugify(p.name);
@@ -184,35 +219,43 @@ function seed() {
     while (seenSlugs.has(slug)) { slug = base + '-' + i++; }
     seenSlugs.add(slug);
     const img = svgPlaceholder(p.category, p.bg, p.accent);
-    insert.run(slug, p.name, p.description, p.composition, p.material, p.price,
-      p.category, p.stock, p.popular, JSON.stringify([img]));
+    // INSERT OR IGNORE — защита от дублей при одновременном первом запуске (serverless)
+    await q.run(`INSERT OR IGNORE INTO products
+      (slug, name, description, composition, material, price, category, stock, is_popular, images)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [slug, p.name, p.description, p.composition, p.material, p.price, p.category, p.stock, p.popular, JSON.stringify([img])]);
   }
 
-  // Отзывы к нескольким товарам
-  const reviews = [
-    { pid: 1, name: 'Ольга', rating: 5, text: 'Матрёшка бесподобная! Роспись живая, дочка в восторге. Спасибо мастерам!' },
-    { pid: 1, name: 'Дмитрий', rating: 5, text: 'Брал в подарок коллегам из Москвы — все были в восторге от читинской работы.' },
-    { pid: 2, name: 'Ирина', rating: 4, text: 'Кружка тёплая и уютная, чай долго не остывает. Немного тяжеловата, но это плюс.' },
-    { pid: 3, name: 'Анна', rating: 5, text: 'Лён отличного качества, вышивка аккуратная. После стирки стало ещё мягче.' },
-    { pid: 4, name: 'Сергей', rating: 5, text: 'Доска пахнет кедром на всю кухню. Крепкая, ножи не скользят.' }
-  ];
-  const rIns = db.prepare('INSERT INTO reviews (product_id, author_name, rating, text) VALUES (?, ?, ?, ?)');
-  for (const r of reviews) rIns.run(r.pid, r.name, r.rating, r.text);
+  // Отзывы (только если их ещё нет)
+  const rc = await q.get('SELECT COUNT(*) AS c FROM reviews');
+  if (Number(rc.c) === 0) {
+    const reviews = [
+      { pid: 1, name: 'Ольга', rating: 5, text: 'Матрёшка бесподобная! Роспись живая, дочка в восторге. Спасибо мастерам!' },
+      { pid: 1, name: 'Дмитрий', rating: 5, text: 'Брал в подарок коллегам из Москвы — все были в восторге от читинской работы.' },
+      { pid: 2, name: 'Ирина', rating: 4, text: 'Кружка тёплая и уютная, чай долго не остывает. Немного тяжеловата, но это плюс.' },
+      { pid: 3, name: 'Анна', rating: 5, text: 'Лён отличного качества, вышивка аккуратная. После стирки стало ещё мягче.' },
+      { pid: 4, name: 'Сергей', rating: 5, text: 'Доска пахнет кедром на всю кухню. Крепкая, ножи не скользят.' }
+    ];
+    for (const r of reviews) {
+      await q.run('INSERT INTO reviews (product_id, author_name, rating, text) VALUES (?, ?, ?, ?)',
+        [r.pid, r.name, r.rating, r.text]);
+    }
+  }
 
-  // Тестовый покупатель (телефон / пароль: 79990000000 / test1234)
-  const hash = bcrypt.hashSync('test1234', 10);
-  db.prepare('INSERT INTO users (name, phone, password_hash) VALUES (?, ?, ?)')
-    .run('Тестовый Покупатель', '79990000000', hash);
-
-  console.log('✔ База заполнена начальными данными (12 товаров, отзывы, тестовый пользователь).');
+  console.log('✔ База заполнена начальными данными (12 товаров, отзывы).');
 }
 
-initSchema();
-seed();
+// Создание схемы + наполнение (вызывается один раз при старте / первом запросе)
+async function initAndSeed() {
+  await initSchema();
+  await seed();
+}
 
-module.exports = { db, slugify, svgPlaceholder };
+module.exports = { q, slugify, svgPlaceholder, initAndSeed, DRIVER };
 
-// Запуск напрямую: node database.js --seed
+// Прямой запуск: node database.js  — создать схему и наполнить базу
 if (require.main === module) {
-  console.log('✔ Схема базы данных создана. Файл: db.sqlite');
+  initAndSeed()
+    .then(() => { console.log('✔ Готово. Драйвер базы:', DRIVER); process.exit(0); })
+    .catch(err => { console.error('Ошибка инициализации базы:', err); process.exit(1); });
 }

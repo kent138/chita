@@ -389,6 +389,10 @@ img { max-width: 100%; display: block; }
 .radio-card small { color: var(--ink-soft); }
 .checkbox-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .checkbox-row input { accent-color: var(--terra); width: 18px; height: 18px; }
+/* Строка согласия на обработку персональных данных */
+.consent-row { align-items: flex-start; margin: 4px 0 18px; cursor: pointer; font-size: 14px; color: var(--ink-soft); }
+.consent-row input { flex-shrink: 0; margin-top: 2px; }
+.consent-row a { color: var(--terra); text-decoration: underline; }
 
 /* -------------------- МОДАЛЬНЫЕ ОКНА -------------------- */
 .modal-overlay { position: fixed; inset: 0; background: rgba(60,42,32,.5); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 20px; }

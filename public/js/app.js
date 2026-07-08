@@ -20,11 +20,18 @@ async function api(path, { method = 'GET', body, admin = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (State.token) headers['Authorization'] = 'Bearer ' + State.token;
   if (admin && State.adminPassword) headers['X-Admin-Password'] = State.adminPassword;
-  const res = await fetch('/api' + path, {
-    method, headers, body: body ? JSON.stringify(body) : undefined
-  });
+
+  let res;
+  try {
+    res = await fetch('/api' + path, {
+      method, headers, body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (e) {
+    // fetch падает, если сервер не запущен или недоступен
+    throw new Error('Нет связи с сервером. Убедитесь, что сервер запущен: откройте папку проекта и выполните «npm start».');
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
+  if (!res.ok) throw new Error(data.error || ('Ошибка сервера (код ' + res.status + ')'));
   return data;
 }
 
@@ -119,6 +126,10 @@ function renderAuthForm(tab) {
         <div class="form-row"><label>Телефон</label><input name="phone" type="tel" placeholder="+7 914 000-00-00" required></div>
         <div class="form-row"><label>Пароль</label><input name="password" type="password" placeholder="Не короче 6 символов" required></div>
         <div class="form-row"><label>Повторите пароль</label><input name="passwordRepeat" type="password" required></div>
+        <label class="checkbox-row consent-row">
+          <input type="checkbox" name="consent" id="regConsent" required>
+          <span>Я согласен(а) на <a href="#/returns" data-link onclick="closeModal()">обработку персональных данных</a></span>
+        </label>
         <button class="btn btn--primary btn--block btn--lg" type="submit">Зарегистрироваться</button>
       </form>`;
     $('#registerForm').addEventListener('submit', handleRegister);
@@ -140,6 +151,7 @@ async function handleLogin(e) {
 async function handleRegister(e) {
   e.preventDefault();
   const f = new FormData(e.target);
+  if (!$('#regConsent')?.checked) return showAuthErr('Поставьте галочку согласия на обработку персональных данных');
   if (f.get('password') !== f.get('passwordRepeat')) return showAuthErr('Пароли не совпадают');
   try {
     const data = await api('/auth/register', { method: 'POST', body: {
@@ -1059,9 +1071,12 @@ async function loadOrders(first) {
     <div class="order-card ${o.status==='Новый'?'is-new':''}">
       <div class="order-card__head">
         <span class="order-card__id">Заказ №${o.id}</span>
-        <select class="status-select" onchange="changeOrderStatus(${o.id}, this.value)">
-          ${STATUSES.map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
-        </select>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="status-select" onchange="changeOrderStatus(${o.id}, this.value)">
+            ${STATUSES.map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
+          </select>
+          ${(o.status==='Выполнен'||o.status==='Отменён')?`<button class="btn btn--danger btn--sm" title="Удалить заказ" onclick="deleteOrder(${o.id})">🗑</button>`:''}
+        </div>
       </div>
       <div class="order-card__meta">
         👤 <b>${esc(o.customer_name)}</b> · 📞 <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a><br>
@@ -1079,6 +1094,17 @@ window.changeOrderStatus = async (id, status) => {
   try { await api('/admin/orders/' + id + '/status', { method: 'PUT', admin: true, body: { status } });
     toast('Статус заказа №' + id + ' → ' + status, 'success'); loadOrders(true); }
   catch (err) { toast(err.message, 'error'); }
+};
+
+// Удаление заказа из панели модерации (только выполненные/отменённые)
+window.deleteOrder = async (id) => {
+  if (!confirm('Удалить заказ №' + id + ' безвозвратно?')) return;
+  try {
+    await api('/admin/orders/' + id, { method: 'DELETE', admin: true });
+    toast('Заказ №' + id + ' удалён', 'success');
+    lastOrderCount = 0; // чтобы уведомление о «новых» не сработало ложно
+    loadOrders(true);
+  } catch (err) { toast(err.message, 'error'); }
 };
 
 // ============================================================

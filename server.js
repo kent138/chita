@@ -1,6 +1,7 @@
 // ============================================================
 //  Сервер интернет-магазина мануфактуры «Матрёшка», Чита
-//  Node.js + Express + встроенный SQLite (node:sqlite)
+//  Node.js + Express. База: SQLite (локально) или Turso (на Vercel).
+//  Работает и как обычный сервер (npm start), и как serverless-функция Vercel.
 // ============================================================
 
 'use strict';
@@ -9,19 +10,35 @@ const express = require('express');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, slugify } = require('./database');
+const { q, slugify, initAndSeed, DRIVER } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Секрет для JWT (в реальном проекте вынести в переменные окружения)
+// Секрет для JWT (на Vercel задайте переменную окружения JWT_SECRET)
 const JWT_SECRET = process.env.JWT_SECRET || 'matryoshka-chita-secret-2024';
 // Пароль администратора для панелей каталога и модерации
-const ADMIN_PASSWORD = '7316';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '7316';
 
 // Разрешаем крупные JSON — изображения приходят как data URL (base64)
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ------------------------------------------------------------
+//  Гарантируем, что схема создана и база наполнена — один раз
+//  (важно для serverless: выполняется при «холодном старте»)
+// ------------------------------------------------------------
+let readyPromise = null;
+function ensureReady() {
+  if (!readyPromise) {
+    readyPromise = initAndSeed().catch(err => { readyPromise = null; throw err; });
+  }
+  return readyPromise;
+}
+// Перед любым /api-запросом дожидаемся готовности базы
+app.use('/api', async (req, res, next) => {
+  try { await ensureReady(); next(); } catch (e) { next(e); }
+});
 
 // ------------------------------------------------------------
 //  Вспомогательные функции
@@ -39,6 +56,9 @@ function mapProduct(row) {
     images, createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
+
+// Обёртка для async-маршрутов: ловит ошибки и передаёт в обработчик
+const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // Middleware: проверка JWT-токена пользователя
 function authUser(req, res, next) {
@@ -72,7 +92,7 @@ function normPhone(phone) {
 // ============================================================
 
 // Регистрация
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', wrap(async (req, res) => {
   const { name, phone, password, passwordRepeat } = req.body;
   if (!name || !phone || !password) {
     return res.status(400).json({ error: 'Заполните все поля' });
@@ -87,35 +107,35 @@ app.post('/api/auth/register', (req, res) => {
   if (cleanPhone.length < 10) {
     return res.status(400).json({ error: 'Введите корректный номер телефона' });
   }
-  const exists = db.prepare('SELECT id FROM users WHERE phone = ?').get(cleanPhone);
+  const exists = await q.get('SELECT id FROM users WHERE phone = ?', [cleanPhone]);
   if (exists) {
     return res.status(409).json({ error: 'Пользователь с таким телефоном уже зарегистрирован' });
   }
   const hash = bcrypt.hashSync(password, 10);
-  const info = db.prepare('INSERT INTO users (name, phone, password_hash) VALUES (?, ?, ?)')
-    .run(name.trim(), cleanPhone, hash);
+  const info = await q.run('INSERT INTO users (name, phone, password_hash) VALUES (?, ?, ?)',
+    [name.trim(), cleanPhone, hash]);
   const user = { id: Number(info.lastInsertRowid), name: name.trim(), phone: cleanPhone };
   const token = jwt.sign(user, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token, user });
-});
+}));
 
 // Вход
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', wrap(async (req, res) => {
   const { phone, password } = req.body;
   const cleanPhone = normPhone(phone);
-  const row = db.prepare('SELECT * FROM users WHERE phone = ?').get(cleanPhone);
+  const row = await q.get('SELECT * FROM users WHERE phone = ?', [cleanPhone]);
   if (!row || !bcrypt.compareSync(password || '', row.password_hash)) {
     return res.status(401).json({ error: 'Неверный телефон или пароль' });
   }
   const user = { id: row.id, name: row.name, phone: row.phone };
   const token = jwt.sign(user, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token, user });
-});
+}));
 
 // Текущий профиль + избранное + адреса
-app.get('/api/auth/me', authUser, (req, res) => {
-  const row = db.prepare('SELECT id, name, phone, addresses, favorites, created_at FROM users WHERE id = ?')
-    .get(req.user.id);
+app.get('/api/auth/me', authUser, wrap(async (req, res) => {
+  const row = await q.get('SELECT id, name, phone, addresses, favorites, created_at FROM users WHERE id = ?',
+    [req.user.id]);
   if (!row) return res.status(404).json({ error: 'Пользователь не найден' });
   res.json({
     id: row.id, name: row.name, phone: row.phone,
@@ -123,39 +143,39 @@ app.get('/api/auth/me', authUser, (req, res) => {
     favorites: JSON.parse(row.favorites || '[]'),
     createdAt: row.created_at
   });
-});
+}));
 
 // Обновление избранного
-app.put('/api/auth/favorites', authUser, (req, res) => {
+app.put('/api/auth/favorites', authUser, wrap(async (req, res) => {
   const favorites = Array.isArray(req.body.favorites) ? req.body.favorites : [];
-  db.prepare('UPDATE users SET favorites = ? WHERE id = ?')
-    .run(JSON.stringify(favorites), req.user.id);
+  await q.run('UPDATE users SET favorites = ? WHERE id = ?', [JSON.stringify(favorites), req.user.id]);
   res.json({ favorites });
-});
+}));
 
 // Обновление адресов доставки
-app.put('/api/auth/addresses', authUser, (req, res) => {
+app.put('/api/auth/addresses', authUser, wrap(async (req, res) => {
   const addresses = Array.isArray(req.body.addresses) ? req.body.addresses : [];
-  db.prepare('UPDATE users SET addresses = ? WHERE id = ?')
-    .run(JSON.stringify(addresses), req.user.id);
+  await q.run('UPDATE users SET addresses = ? WHERE id = ?', [JSON.stringify(addresses), req.user.id]);
   res.json({ addresses });
-});
+}));
 
 // История заказов пользователя
-app.get('/api/auth/orders', authUser, (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC')
-    .all(req.user.id);
-  const itemsStmt = db.prepare('SELECT * FROM order_items WHERE order_id = ?');
-  const result = orders.map(o => ({ ...o, gift_wrap: !!o.gift_wrap, items: itemsStmt.all(o.id) }));
+app.get('/api/auth/orders', authUser, wrap(async (req, res) => {
+  const orders = await q.all('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+  const result = [];
+  for (const o of orders) {
+    const items = await q.all('SELECT * FROM order_items WHERE order_id = ?', [o.id]);
+    result.push({ ...o, gift_wrap: !!o.gift_wrap, items });
+  }
   res.json(result);
-});
+}));
 
 // ============================================================
 //  ТОВАРЫ (публичные)
 // ============================================================
 
 // Список товаров с фильтрами
-app.get('/api/products', (req, res) => {
+app.get('/api/products', wrap(async (req, res) => {
   const { category, material, minPrice, maxPrice, inStock, popular, search } = req.query;
   let sql = 'SELECT * FROM products WHERE 1=1';
   const params = [];
@@ -166,52 +186,52 @@ app.get('/api/products', (req, res) => {
   if (inStock === '1') { sql += ' AND stock > 0'; }
   if (popular === '1') { sql += ' AND is_popular = 1'; }
   sql += ' ORDER BY is_popular DESC, created_at DESC';
-  let rows = db.prepare(sql).all(...params);
+  let rows = await q.all(sql, params);
   // Поиск по названию/описанию — в JS, т.к. SQLite LOWER() не работает с кириллицей
   if (search) {
     const s = String(search).toLowerCase();
     rows = rows.filter(r => (r.name || '').toLowerCase().includes(s) || (r.description || '').toLowerCase().includes(s));
   }
   res.json(rows.map(mapProduct));
-});
+}));
 
 // Уникальные категории и материалы (для фильтров)
-app.get('/api/products/facets', (req, res) => {
-  const cats = db.prepare("SELECT DISTINCT category FROM products WHERE category != '' ORDER BY category").all().map(r => r.category);
-  const mats = db.prepare("SELECT DISTINCT material FROM products WHERE material != '' ORDER BY material").all().map(r => r.material);
-  const range = db.prepare('SELECT MIN(price) AS min, MAX(price) AS max FROM products').get();
-  res.json({ categories: cats, materials: mats, priceMin: range.min || 0, priceMax: range.max || 0 });
-});
+app.get('/api/products/facets', wrap(async (req, res) => {
+  const cats = (await q.all("SELECT DISTINCT category FROM products WHERE category != '' ORDER BY category")).map(r => r.category);
+  const mats = (await q.all("SELECT DISTINCT material FROM products WHERE material != '' ORDER BY material")).map(r => r.material);
+  const range = await q.get('SELECT MIN(price) AS min, MAX(price) AS max FROM products');
+  res.json({ categories: cats, materials: mats, priceMin: (range && range.min) || 0, priceMax: (range && range.max) || 0 });
+}));
 
 // Подсказки поиска (автодополнение) — фильтрация в JS для поддержки кириллицы
-app.get('/api/products/suggest', (req, res) => {
-  const q = String(req.query.q || '').toLowerCase().trim();
-  if (!q) return res.json([]);
-  const rows = db.prepare('SELECT id, slug, name, is_popular FROM products').all();
+app.get('/api/products/suggest', wrap(async (req, res) => {
+  const term = String(req.query.q || '').toLowerCase().trim();
+  if (!term) return res.json([]);
+  const rows = await q.all('SELECT id, slug, name, is_popular FROM products');
   const matched = rows
-    .filter(r => (r.name || '').toLowerCase().includes(q))
+    .filter(r => (r.name || '').toLowerCase().includes(term))
     .sort((a, b) => b.is_popular - a.is_popular)
     .slice(0, 6)
     .map(({ id, slug, name }) => ({ id, slug, name }));
   res.json(matched);
-});
+}));
 
 // Один товар по slug или id
-app.get('/api/products/:key', (req, res) => {
+app.get('/api/products/:key', wrap(async (req, res) => {
   const key = req.params.key;
-  let row = db.prepare('SELECT * FROM products WHERE slug = ?').get(key);
-  if (!row && /^\d+$/.test(key)) row = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(key));
+  let row = await q.get('SELECT * FROM products WHERE slug = ?', [key]);
+  if (!row && /^\d+$/.test(key)) row = await q.get('SELECT * FROM products WHERE id = ?', [Number(key)]);
   if (!row) return res.status(404).json({ error: 'Товар не найден' });
   const product = mapProduct(row);
   // «С этим покупают» — из той же категории
-  const related = db.prepare('SELECT * FROM products WHERE category = ? AND id != ? ORDER BY RANDOM() LIMIT 4')
-    .all(row.category, row.id).map(mapProduct);
-  const reviews = db.prepare('SELECT * FROM reviews WHERE product_id = ? ORDER BY created_at DESC').all(row.id);
+  const related = (await q.all('SELECT * FROM products WHERE category = ? AND id != ? ORDER BY RANDOM() LIMIT 4',
+    [row.category, row.id])).map(mapProduct);
+  const reviews = await q.all('SELECT * FROM reviews WHERE product_id = ? ORDER BY created_at DESC', [row.id]);
   res.json({ product, related, reviews });
-});
+}));
 
 // Отзыв к товару (от авторизованного пользователя или гостя)
-app.post('/api/products/:id/reviews', (req, res) => {
+app.post('/api/products/:id/reviews', wrap(async (req, res) => {
   const productId = Number(req.params.id);
   const { rating, text, name } = req.body;
   const r = Math.max(1, Math.min(5, Number(rating) || 5));
@@ -220,18 +240,18 @@ app.post('/api/products/:id/reviews', (req, res) => {
   if (header.startsWith('Bearer ')) {
     try { const u = jwt.verify(header.slice(7), JWT_SECRET); userId = u.id; author = u.name; } catch {}
   }
-  const info = db.prepare('INSERT INTO reviews (product_id, user_id, author_name, rating, text) VALUES (?, ?, ?, ?, ?)')
-    .run(productId, userId, author, r, text || '');
-  const review = db.prepare('SELECT * FROM reviews WHERE id = ?').get(Number(info.lastInsertRowid));
+  const info = await q.run('INSERT INTO reviews (product_id, user_id, author_name, rating, text) VALUES (?, ?, ?, ?, ?)',
+    [productId, userId, author, r, text || '']);
+  const review = await q.get('SELECT * FROM reviews WHERE id = ?', [Number(info.lastInsertRowid)]);
   res.json(review);
-});
+}));
 
 // ============================================================
 //  ЗАКАЗЫ
 // ============================================================
 
 // Создание заказа (гость или авторизованный) — сразу попадает в модерацию
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', wrap(async (req, res) => {
   const {
     customerName, customerPhone, deliveryMethod, deliveryAddress,
     paymentMethod, comment, giftWrap, promoCode, items
@@ -252,11 +272,10 @@ app.post('/api/orders', (req, res) => {
   }
 
   // Считаем сумму по реальным ценам из БД (защита от подмены на клиенте)
-  const prodStmt = db.prepare('SELECT id, name, price, stock FROM products WHERE id = ?');
   let total = 0;
   const validItems = [];
   for (const it of items) {
-    const p = prodStmt.get(Number(it.id));
+    const p = await q.get('SELECT id, name, price, stock FROM products WHERE id = ?', [Number(it.id)]);
     if (!p) continue;
     const qty = Math.max(1, Number(it.quantity) || 1);
     total += p.price * qty;
@@ -277,26 +296,22 @@ app.post('/api/orders', (req, res) => {
   if (giftWrap) total += 150;
 
   // Сохраняем заказ
-  const orderInfo = db.prepare(`
+  const orderInfo = await q.run(`
     INSERT INTO orders (user_id, customer_name, customer_phone, delivery_method,
       delivery_address, payment_method, comment, gift_wrap, promo_code, status, total_price)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Новый', ?)
-  `).run(userId, customerName.trim(), normPhone(customerPhone), deliveryMethod,
-    deliveryAddress || '', paymentMethod, comment || '', giftWrap ? 1 : 0, promo, total);
+  `, [userId, customerName.trim(), normPhone(customerPhone), deliveryMethod,
+    deliveryAddress || '', paymentMethod, comment || '', giftWrap ? 1 : 0, promo, total]);
 
   const orderId = Number(orderInfo.lastInsertRowid);
-  const itemStmt = db.prepare(`
-    INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  const decStock = db.prepare('UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?');
   for (const it of validItems) {
-    itemStmt.run(orderId, it.product_id, it.product_name, it.product_price, it.quantity);
-    decStock.run(it.quantity, it.product_id);
+    await q.run('INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity) VALUES (?, ?, ?, ?, ?)',
+      [orderId, it.product_id, it.product_name, it.product_price, it.quantity]);
+    await q.run('UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?', [it.quantity, it.product_id]);
   }
 
   res.json({ ok: true, orderId, total });
-});
+}));
 
 // ============================================================
 //  АДМИН: КАТАЛОГ (пароль 7316)
@@ -306,37 +321,37 @@ app.post('/api/orders', (req, res) => {
 app.post('/api/admin/verify', authAdmin, (req, res) => res.json({ ok: true }));
 
 // Добавить товар
-app.post('/api/admin/products', authAdmin, (req, res) => {
+app.post('/api/admin/products', authAdmin, wrap(async (req, res) => {
   const { name, description, composition, material, price, category, stock, images, isPopular } = req.body;
   if (!name || price == null) {
     return res.status(400).json({ error: 'Укажите название и цену' });
   }
   let base = slugify(name) || 'tovar';
   let slug = base, i = 2;
-  while (db.prepare('SELECT id FROM products WHERE slug = ?').get(slug)) { slug = base + '-' + i++; }
-  const info = db.prepare(`
+  while (await q.get('SELECT id FROM products WHERE slug = ?', [slug])) { slug = base + '-' + i++; }
+  const info = await q.run(`
     INSERT INTO products (slug, name, description, composition, material, price, category, stock, is_popular, images)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(slug, name.trim(), description || '', composition || '', material || '',
+  `, [slug, name.trim(), description || '', composition || '', material || '',
     Number(price), category || '', Number(stock) || 0, isPopular ? 1 : 0,
-    JSON.stringify(Array.isArray(images) ? images : []));
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(info.lastInsertRowid));
+    JSON.stringify(Array.isArray(images) ? images : [])]);
+  const row = await q.get('SELECT * FROM products WHERE id = ?', [Number(info.lastInsertRowid)]);
   res.json(mapProduct(row));
-});
+}));
 
 // Редактировать товар
-app.put('/api/admin/products/:id', authAdmin, (req, res) => {
+app.put('/api/admin/products/:id', authAdmin, wrap(async (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  const existing = await q.get('SELECT * FROM products WHERE id = ?', [id]);
   if (!existing) return res.status(404).json({ error: 'Товар не найден' });
   const b = req.body;
   const images = Array.isArray(b.images) ? JSON.stringify(b.images) : existing.images;
-  db.prepare(`
+  await q.run(`
     UPDATE products SET
       name = ?, description = ?, composition = ?, material = ?, price = ?,
       category = ?, stock = ?, is_popular = ?, images = ?, updated_at = datetime('now')
     WHERE id = ?
-  `).run(
+  `, [
     b.name ?? existing.name,
     b.description ?? existing.description,
     b.composition ?? existing.composition,
@@ -346,46 +361,63 @@ app.put('/api/admin/products/:id', authAdmin, (req, res) => {
     b.stock != null ? Number(b.stock) : existing.stock,
     b.isPopular != null ? (b.isPopular ? 1 : 0) : existing.is_popular,
     images, id
-  );
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  ]);
+  const row = await q.get('SELECT * FROM products WHERE id = ?', [id]);
   res.json(mapProduct(row));
-});
+}));
 
 // Удалить товар
-app.delete('/api/admin/products/:id', authAdmin, (req, res) => {
+app.delete('/api/admin/products/:id', authAdmin, wrap(async (req, res) => {
   const id = Number(req.params.id);
-  db.prepare('DELETE FROM products WHERE id = ?').run(id);
+  await q.run('DELETE FROM products WHERE id = ?', [id]);
   res.json({ ok: true });
-});
+}));
 
 // ============================================================
 //  АДМИН: МОДЕРАЦИЯ ЗАКАЗОВ (пароль 7316)
 // ============================================================
 
 // Все заказы (с товарами) — для панели модерации, обновляется по polling
-app.get('/api/admin/orders', authAdmin, (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
-  const itemsStmt = db.prepare('SELECT * FROM order_items WHERE order_id = ?');
-  const result = orders.map(o => ({ ...o, gift_wrap: !!o.gift_wrap, items: itemsStmt.all(o.id) }));
+app.get('/api/admin/orders', authAdmin, wrap(async (req, res) => {
+  const orders = await q.all('SELECT * FROM orders ORDER BY created_at DESC');
+  const result = [];
+  for (const o of orders) {
+    const items = await q.all('SELECT * FROM order_items WHERE order_id = ?', [o.id]);
+    result.push({ ...o, gift_wrap: !!o.gift_wrap, items });
+  }
   res.json(result);
-});
+}));
 
 // Изменить статус заказа
-app.put('/api/admin/orders/:id/status', authAdmin, (req, res) => {
+app.put('/api/admin/orders/:id/status', authAdmin, wrap(async (req, res) => {
   const id = Number(req.params.id);
   const allowed = ['Новый', 'В обработке', 'Отправлен', 'Выполнен', 'Отменён'].map(s => s.normalize('NFC'));
   const status = String(req.body.status || '').normalize('NFC');
   if (!allowed.includes(status)) {
     return res.status(400).json({ error: 'Недопустимый статус' });
   }
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+  await q.run('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
   res.json({ ok: true, status });
-});
+}));
+
+// Удалить заказ — только если он уже «Выполнен» (доставлен) или «Отменён»
+app.delete('/api/admin/orders/:id', authAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await q.get('SELECT status FROM orders WHERE id = ?', [id]);
+  if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+  const status = String(order.status || '').normalize('NFC');
+  if (status !== 'Выполнен'.normalize('NFC') && status !== 'Отменён'.normalize('NFC')) {
+    return res.status(400).json({ error: 'Удалять можно только выполненные или отменённые заказы' });
+  }
+  await q.run('DELETE FROM order_items WHERE order_id = ?', [id]);
+  await q.run('DELETE FROM orders WHERE id = ?', [id]);
+  res.json({ ok: true });
+}));
 
 // ============================================================
-//  B2B / обратная связь / подписка (сохраняем как заявки-заказы с пометкой)
+//  B2B / обратная связь / подписка (демо — хранятся в памяти)
 // ============================================================
-const requests = []; // заявки хранятся в памяти (демо)
+const requests = [];
 
 app.post('/api/b2b', (req, res) => {
   const { company, name, phone, message } = req.body;
@@ -415,7 +447,48 @@ app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  🪆  Мануфактура «Матрёшка» — сервер запущен`);
-  console.log(`     http://localhost:${PORT}\n`);
+// ------------------------------------------------------------
+//  Глобальный обработчик ошибок — любая непойманная ошибка
+//  возвращается как понятный JSON, а сервер не падает
+// ------------------------------------------------------------
+app.use((err, req, res, next) => {
+  console.error('Ошибка сервера:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Ошибка на сервере: ' + (err.message || 'неизвестная ошибка') });
 });
+
+// ------------------------------------------------------------
+//  Локальные IP — чтобы открыть сайт с телефона в той же Wi-Fi сети
+// ------------------------------------------------------------
+function lanAddresses() {
+  const os = require('os');
+  const nets = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) ips.push(net.address);
+    }
+  }
+  return ips;
+}
+
+// ------------------------------------------------------------
+//  Запуск.
+//   • Локально (node server.js) — поднимаем обычный сервер.
+//   • На Vercel — файл импортируется как функция, listen не вызывается,
+//     наружу отдаётся сам Express-app (module.exports).
+// ------------------------------------------------------------
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  🪆  Мануфактура «Матрёшка» — сервер запущен (база: ${DRIVER})`);
+    console.log(`     • На этом компьютере:  http://localhost:${PORT}`);
+    const ips = lanAddresses();
+    if (ips.length) {
+      console.log(`     • С других устройств в этой же Wi-Fi сети:`);
+      ips.forEach(ip => console.log(`         http://${ip}:${PORT}`));
+    }
+    console.log('');
+  });
+}
+
+module.exports = app;
