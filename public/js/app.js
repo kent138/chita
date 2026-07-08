@@ -113,8 +113,7 @@ function renderAuthForm(tab) {
         <div class="form-row"><label>Телефон</label><input name="phone" type="tel" placeholder="+7 914 000-00-00" required></div>
         <div class="form-row"><label>Пароль</label><input name="password" type="password" required></div>
         <button class="btn btn--primary btn--block btn--lg" type="submit">Войти</button>
-      </form>
-      <p class="form-hint">Тест: 79990000000 / test1234</p>`;
+      </form>`;
     $('#loginForm').addEventListener('submit', handleLogin);
   } else {
     wrap.innerHTML = `
@@ -424,7 +423,7 @@ async function renderCatalog(_m, params) {
             ${catalogFacets.categories.map(c=>`<label><input type="radio" name="category" value="${esc(c)}" ${preCat===c?'checked':''}> ${esc(c)}</label>`).join('')}
           </div>
           <div class="filter-group">
-            <h4>Материал</h4>
+            <h4>Состав</h4>
             <label><input type="radio" name="material" value="" checked> Любой</label>
             ${catalogFacets.materials.map(m=>`<label><input type="radio" name="material" value="${esc(m)}"> ${esc(m)}</label>`).join('')}
           </div>
@@ -501,7 +500,7 @@ async function renderProduct(slug) {
           <div class="product__section"><h3>Описание</h3><p>${esc(p.description)}</p></div>
           ${p.composition?`<div class="product__section"><h3>Состав и материалы</h3><p>${esc(p.composition)}</p></div>`:''}
           <div class="product__section">
-            ${p.material?`<span class="tag">Материал: ${esc(p.material)}</span>`:''}
+            ${p.material?`<span class="tag">Состав: ${esc(p.material)}</span>`:''}
             <span class="tag">Ручная работа</span>
             <span class="tag">Сделано в Чите</span>
           </div>
@@ -979,7 +978,7 @@ function productForm(product = null) {
       <div class="form-row"><label>Состав / материалы</label><input name="composition" value="${esc(product?.composition||'')}"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-row"><label>Категория</label><input name="category" value="${esc(product?.category||'')}" placeholder="Посуда, Текстиль…"></div>
-        <div class="form-row"><label>Материал</label><input name="material" value="${esc(product?.material||'')}" placeholder="Дерево, Лён…"></div>
+        <div class="form-row"><label>Состав</label><input name="material" value="${esc(product?.material||'')}" placeholder="Хлопок, лён, шёлк…"></div>
         <div class="form-row"><label>Цена, ₽*</label><input name="price" type="number" step="1" value="${product?.price||''}" required></div>
         <div class="form-row"><label>Количество на складе</label><input name="stock" type="number" value="${product?.stock??0}"></div>
       </div>
