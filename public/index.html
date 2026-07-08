@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мануфактура «Матрёшка» — сделано в Чите с душой</title>
+  <meta name="description" content="Мануфактура «Матрёшка» из Читы — товары ручной работы из сибирских материалов. Посуда, текстиль, игрушки, декор. Доставка по России.">
+  <meta name="keywords" content="матрёшка, Чита, ручная работа, сибирские товары, посуда, текстиль, Забайкалье">
+  <meta property="og:title" content="Мануфактура «Матрёшка» — сибирская душа в каждой вещи">
+  <meta property="og:description" content="Товары ручной работы из Читы. Тепло. Натуральность. Традиции.">
+  <meta property="og:type" content="website">
+
+  <!-- Шрифты: заголовочный с засечками + читаемый гротеск -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+
+  <!-- Яндекс.Метрика (демо-счётчик, замените на реальный ID) -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+    m[i].l=1*new Date();for(var j=0;j<document.scripts.length;j++){if(document.scripts[j].src===r){return;}}
+    /* Демонстрационный вызов, реальный код метрики подключается здесь */})
+    (window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");
+    // ym(00000000, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true });
+  </script>
+</head>
+<body>
+  <!-- ШАПКА -->
+  <header class="header" id="siteHeader">
+    <div class="container header__inner">
+      <a href="#/" class="logo" data-link>
+        <img class="logo__img" src="/img/logo.svg" alt="Матрёшка — магазин тканей и фурнитуры" width="48" height="48">
+        <span class="logo__text logo__text--brand"><b>Матрёшка</b><small>магазин тканей и фурнитуры</small></span>
+      </a>
+
+      <nav class="nav" id="mainNav">
+        <a href="#/catalog" data-link>Каталог</a>
+        <a href="#/about" data-link>О нас</a>
+        <a href="#/blog" data-link>Блог</a>
+        <a href="#/sale" data-link>Акции</a>
+        <a href="#/b2b" data-link>Оптовикам</a>
+        <a href="#/contacts" data-link>Контакты</a>
+      </nav>
+
+      <div class="header__actions">
+        <!-- Поиск -->
+        <div class="search" id="searchBox">
+          <input type="text" id="searchInput" placeholder="Поиск товаров…" autocomplete="off">
+          <div class="search__suggest" id="searchSuggest"></div>
+        </div>
+
+        <!-- Избранное -->
+        <button class="icon-btn" id="favBtn" title="Избранное" data-link href="#/account?tab=fav">
+          ♥<span class="badge" id="favBadge" hidden>0</span>
+        </button>
+
+        <!-- Корзина -->
+        <button class="icon-btn" id="cartBtn" title="Корзина">
+          🛒<span class="badge" id="cartBadge" hidden>0</span>
+        </button>
+
+        <!-- Авторизация -->
+        <div class="auth-buttons" id="authButtons">
+          <button class="btn btn--ghost" id="loginBtn">Войти</button>
+          <button class="btn btn--primary" id="registerBtn">Регистрация</button>
+        </div>
+        <div class="user-menu" id="userMenu" hidden>
+          <button class="btn btn--ghost" id="accountBtn"><span id="userName">Кабинет</span></button>
+          <button class="btn btn--link" id="logoutBtn">Выйти</button>
+        </div>
+
+        <!-- Меню «⋯» -->
+        <div class="dots-menu">
+          <button class="icon-btn dots" id="dotsBtn" title="Меню">⋯</button>
+          <div class="dots-menu__dropdown" id="dotsDropdown" hidden>
+            <button id="menuEditCatalog">✎ Редактировать каталог</button>
+            <button id="menuModeration">📋 Панель модерации</button>
+          </div>
+        </div>
+
+        <button class="icon-btn burger" id="burgerBtn" title="Меню">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ОСНОВНОЙ КОНТЕНТ (рендерится роутером) -->
+  <main id="app"></main>
+
+  <!-- ПОДВАЛ -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__col">
+        <div class="logo logo--light">
+          <span class="logo__img-wrap"><img class="logo__img" src="/img/logo.svg" alt="Матрёшка" width="46" height="46"></span>
+          <span class="logo__text logo__text--brand"><b>Матрёшка</b><small>магазин тканей и фурнитуры</small></span>
+        </div>
+        <p class="footer__slogan">Матрёшка — сибирская душа в каждой вещи.</p>
+      </div>
+      <div class="footer__col">
+        <h4>Магазин</h4>
+        <a href="#/catalog" data-link>Каталог</a>
+        <a href="#/sale" data-link>Акции и скидки</a>
+        <a href="#/b2b" data-link>Оптовым покупателям</a>
+        <a href="#/returns" data-link>Возврат и гарантия</a>
+      </div>
+      <div class="footer__col">
+        <h4>Компания</h4>
+        <a href="#/about" data-link>О нас</a>
+        <a href="#/blog" data-link>Блог</a>
+        <a href="#/contacts" data-link>Контакты</a>
+      </div>
+      <div class="footer__col">
+        <h4>Контакты</h4>
+        <p>г. Чита, ул. Бутина, 44, пом. 1</p>
+        <p><a href="tel:+79143592767">+7 914 359-27-67</a></p>
+        <p class="footer__social">
+          <a href="https://wa.me/79143592767" target="_blank" rel="noopener">WhatsApp</a> ·
+          <a href="https://t.me/+79143592767" target="_blank" rel="noopener">Telegram</a>
+        </p>
+      </div>
+    </div>
+    <div class="footer__bottom">
+      <p>© 2026 Мануфактура «Матрёшка», Чита. Сделано в Чите с любовью.</p>
+    </div>
+  </footer>
+
+  <!-- КОРЗИНА (выезжающая панель) -->
+  <div class="drawer-overlay" id="cartOverlay" hidden></div>
+  <aside class="drawer" id="cartDrawer" hidden>
+    <div class="drawer__head">
+      <h3>Корзина</h3>
+      <button class="icon-btn" id="cartClose">✕</button>
+    </div>
+    <div class="drawer__body" id="cartItems"></div>
+    <div class="drawer__foot" id="cartFoot"></div>
+  </aside>
+
+  <!-- УНИВЕРСАЛЬНОЕ МОДАЛЬНОЕ ОКНО -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" id="modal">
+      <button class="modal__close" id="modalClose">✕</button>
+      <div class="modal__content" id="modalContent"></div>
+    </div>
+  </div>
+
+  <!-- Всплывающие уведомления -->
+  <div class="toasts" id="toasts"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
