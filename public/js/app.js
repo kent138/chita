@@ -555,7 +555,7 @@ async function renderCheckout() {
   app.innerHTML = `
     <div class="container page-head"><h1>Оформление заказа</h1></div>
     <div class="container section" style="padding-top:16px">
-      <div class="catalog" style="grid-template-columns:1fr 380px">
+      <div class="checkout-grid">
         <form id="checkoutForm">
           <div class="info-block">
             <h3>Контактные данные</h3>
@@ -585,7 +585,7 @@ async function renderCheckout() {
           </div>
         </form>
 
-        <aside class="filters" style="position:sticky;top:90px">
+        <aside class="filters checkout-summary">
           <h3>Ваш заказ</h3>
           <div id="checkoutItems"></div>
           <div class="form-row" style="margin-top:14px"><label>Промокод</label>

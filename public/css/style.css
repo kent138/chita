@@ -308,6 +308,15 @@ img { max-width: 100%; display: block; }
 
 /* -------------------- КАТАЛОГ -------------------- */
 .catalog { display: grid; grid-template-columns: 260px 1fr; gap: 32px; align-items: start; }
+
+/* Сетка страницы оформления заказа: слева формы, справа сводка.
+   На узких экранах — всё в одну колонку (без прокрутки вправо). */
+.checkout-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start; }
+.checkout-summary { position: sticky; top: 90px; }
+@media (max-width: 860px) {
+  .checkout-grid { grid-template-columns: 1fr; }
+  .checkout-summary { position: static; }
+}
 .filters {
   background: var(--paper); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 24px; position: sticky; top: 90px;
@@ -517,6 +526,14 @@ img { max-width: 100%; display: block; }
   .modal__content { padding: 24px; }
   .subscribe { padding: 28px; }
   .subscribe__form { flex-direction: column; }
+  /* На узких телефонах шапка не помещалась и появлялась прокрутка вправо.
+     Убираем лишнее: кнопку «Регистрация» (она есть во вкладке окна входа),
+     уменьшаем отступы и кнопки. */
+  .header__actions { gap: 6px; }
+  #registerBtn { display: none; }
+  .auth-buttons .btn, .user-menu .btn { padding: 8px 12px; font-size: 13px; }
+  .user-menu #accountBtn { max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .icon-btn { width: 38px; height: 38px; font-size: 16px; }
 }
 
 /* Текстовый логотип показываем только на десктопе (иначе наезжает на кнопки) */
