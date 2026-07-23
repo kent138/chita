@@ -82,6 +82,7 @@ const SCHEMA = [
     description   TEXT    DEFAULT '',
     composition   TEXT    DEFAULT '',
     material      TEXT    DEFAULT '',
+    width         TEXT    DEFAULT '',
     price         REAL    NOT NULL,
     category      TEXT    DEFAULT '',
     stock         INTEGER DEFAULT 0,
@@ -124,8 +125,19 @@ const SCHEMA = [
   )`
 ];
 
+// Миграции: добавляют недостающие столбцы в уже существующие таблицы
+// (для баз, созданных до появления новых полей — и локальной, и облачной).
+// ALTER ... ADD COLUMN бросает ошибку, если столбец уже есть — её игнорируем.
+const MIGRATIONS = [
+  "ALTER TABLE products ADD COLUMN width TEXT DEFAULT ''"
+];
+
 async function initSchema() {
   for (const stmt of SCHEMA) await rawExecute({ sql: stmt, args: [] });
+  for (const stmt of MIGRATIONS) {
+    try { await rawExecute({ sql: stmt, args: [] }); }
+    catch (e) { /* столбец уже существует — пропускаем */ }
+  }
 }
 
 // ------------------------------------------------------------

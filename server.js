@@ -51,7 +51,7 @@ function mapProduct(row) {
   try { images = JSON.parse(row.images || '[]'); } catch { images = []; }
   return {
     id: row.id, slug: row.slug, name: row.name, description: row.description,
-    composition: row.composition, material: row.material, price: row.price,
+    composition: row.composition, material: row.material, width: row.width, price: row.price,
     category: row.category, stock: row.stock, isPopular: !!row.is_popular,
     images, createdAt: row.created_at, updatedAt: row.updated_at
   };
@@ -322,7 +322,7 @@ app.post('/api/admin/verify', authAdmin, (req, res) => res.json({ ok: true }));
 
 // Добавить товар
 app.post('/api/admin/products', authAdmin, wrap(async (req, res) => {
-  const { name, description, composition, material, price, category, stock, images, isPopular } = req.body;
+  const { name, description, composition, material, width, price, category, stock, images, isPopular } = req.body;
   if (!name || price == null) {
     return res.status(400).json({ error: 'Укажите название и цену' });
   }
@@ -330,9 +330,9 @@ app.post('/api/admin/products', authAdmin, wrap(async (req, res) => {
   let slug = base, i = 2;
   while (await q.get('SELECT id FROM products WHERE slug = ?', [slug])) { slug = base + '-' + i++; }
   const info = await q.run(`
-    INSERT INTO products (slug, name, description, composition, material, price, category, stock, is_popular, images)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [slug, name.trim(), description || '', composition || '', material || '',
+    INSERT INTO products (slug, name, description, composition, material, width, price, category, stock, is_popular, images)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [slug, name.trim(), description || '', composition || '', material || '', width || '',
     Number(price), category || '', Number(stock) || 0, isPopular ? 1 : 0,
     JSON.stringify(Array.isArray(images) ? images : [])]);
   const row = await q.get('SELECT * FROM products WHERE id = ?', [Number(info.lastInsertRowid)]);
@@ -348,7 +348,7 @@ app.put('/api/admin/products/:id', authAdmin, wrap(async (req, res) => {
   const images = Array.isArray(b.images) ? JSON.stringify(b.images) : existing.images;
   await q.run(`
     UPDATE products SET
-      name = ?, description = ?, composition = ?, material = ?, price = ?,
+      name = ?, description = ?, composition = ?, material = ?, width = ?, price = ?,
       category = ?, stock = ?, is_popular = ?, images = ?, updated_at = datetime('now')
     WHERE id = ?
   `, [
@@ -356,6 +356,7 @@ app.put('/api/admin/products/:id', authAdmin, wrap(async (req, res) => {
     b.description ?? existing.description,
     b.composition ?? existing.composition,
     b.material ?? existing.material,
+    b.width ?? existing.width,
     b.price != null ? Number(b.price) : existing.price,
     b.category ?? existing.category,
     b.stock != null ? Number(b.stock) : existing.stock,

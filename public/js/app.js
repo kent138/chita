@@ -501,6 +501,7 @@ async function renderProduct(slug) {
           ${p.composition?`<div class="product__section"><h3>Состав и материалы</h3><p>${esc(p.composition)}</p></div>`:''}
           <div class="product__section">
             ${p.material?`<span class="tag">Состав: ${esc(p.material)}</span>`:''}
+            ${p.width?`<span class="tag">Ширина: ${esc(p.width)}</span>`:''}
             <span class="tag">Ручная работа</span>
             <span class="tag">Сделано в Чите</span>
           </div>
@@ -979,6 +980,7 @@ function productForm(product = null) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-row"><label>Категория</label><input name="category" value="${esc(product?.category||'')}" placeholder="Посуда, Текстиль…"></div>
         <div class="form-row"><label>Состав</label><input name="material" value="${esc(product?.material||'')}" placeholder="Хлопок, лён, шёлк…"></div>
+        <div class="form-row"><label>Ширина</label><input name="width" value="${esc(product?.width||'')}" placeholder="напр. 20 см"></div>
         <div class="form-row"><label>Цена, ₽*</label><input name="price" type="number" step="1" value="${product?.price||''}" required></div>
         <div class="form-row"><label>Количество на складе</label><input name="stock" type="number" value="${product?.stock??0}"></div>
       </div>
@@ -1007,7 +1009,7 @@ function productForm(product = null) {
     const f = new FormData(e.target);
     const body = {
       name: f.get('name'), description: f.get('description'), composition: f.get('composition'),
-      category: f.get('category'), material: f.get('material'),
+      category: f.get('category'), material: f.get('material'), width: f.get('width'),
       price: f.get('price'), stock: f.get('stock'),
       isPopular: $('#pfPop').checked,
       images: imageData ? [imageData] : (product?.images || [])
