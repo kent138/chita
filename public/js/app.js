@@ -310,7 +310,7 @@ function toggleFav(id) {
   if (State.favorites.includes(id)) State.favorites = State.favorites.filter(f => f !== id);
   else State.favorites.push(id);
   saveFav();
-  $('.card__fav[data-fav="' + id + '"]').forEach(b=>{
+  $$('.card__fav[data-fav="' + id + '"]').forEach(b=>{
     const active=State.favorites.includes(id);
     b.classList.toggle('active',active);
     b.setAttribute('aria-pressed',String(active));
