@@ -25,6 +25,7 @@ test('cross-device registration, login, logout, favorites and basket in isolated
   const app=express();
   app.use(express.json());
   cloud.register(app);
+  app.use((err,req,res,next)=>res.status(err.statusCode||500).json({error:err.message}));
   const server=await new Promise(resolve=>{
     const s=app.listen(0,'127.0.0.1',()=>resolve(s));
   });
