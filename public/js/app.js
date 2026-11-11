@@ -699,30 +699,20 @@ async function renderCheckout() {
 // ============================================================
 function renderAbout() {
   app.innerHTML = `
-    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / О нас</div><h1>О мануфактуре</h1></div>
+    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / О нас</div><h1>О магазине «Матрёшка»</h1></div>
     <div class="container section" style="padding-top:16px">
       <div class="info-block">
-        <h2>Матрёшка — сибирская душа в каждой вещи</h2>
-        <p>Мы — мастера из Читы, которые делают настоящие вещи руками. Наша мануфактура выросла из небольшой мастерской в самом сердце Забайкалья и сегодня объединяет ремесленников, влюблённых в своё дело.</p>
-        <p>Мы верим, что вещь, сделанная руками, хранит тепло мастера. Поэтому не гонимся за конвейером — каждое изделие проходит через руки человека, а не машины.</p>
+        <h2>Ткани и фурнитура в Чите</h2>
+        <p>«Матрёшка» — магазин тканей и фурнитуры по адресу г. Чита, ул. Бутина, 44, помещение 1.</p>
+        <p>В каталоге можно посмотреть фотографии тканей, узнать их состав, цену и наличие. Мы сохраняем ассортимент и переносим его в новую, более быструю версию сайта.</p>
       </div>
-      <div class="story" style="margin:32px 0">
-        <div class="story__art">🌲</div>
-        <div>
-          <h2>Наши ценности</h2>
-          <p><b>Традиции.</b> Мы храним и продолжаем народные промыслы Сибири.</p>
-          <p><b>Натуральность.</b> Кедр, берёза, лён, шерсть, береста — только природные материалы.</p>
-          <p><b>Честность.</b> Говорим правду о товаре и отвечаем за качество.</p>
-          <p><b>Локальность.</b> Мы гордимся тем, что делаем это именно здесь, в Чите.</p>
-        </div>
+      <div class="features" style="margin-top:30px">
+        <div class="feature"><div class="feature__icon">🧵</div><h3>Каталог тканей</h3><p>Фотографии, состав и цена каждого товара.</p></div>
+        <div class="feature"><div class="feature__icon">🎨</div><h3>Поиск по материалу</h3><p>Фильтры по ткани, материалу и стоимости.</p></div>
+        <div class="feature"><div class="feature__icon">📍</div><h3>Магазин в Чите</h3><p>ул. Бутина, 44, помещение 1.</p></div>
+        <div class="feature"><div class="feature__icon">☎</div><h3>Есть вопросы?</h3><p>Уточнить детали можно по телефону магазина.</p></div>
       </div>
-      <div class="features">
-        <div class="feature"><div class="feature__icon">👐</div><h3>Команда мастеров</h3><p>Резчики, швеи, художники — каждый мастер своего дела.</p></div>
-        <div class="feature"><div class="feature__icon">🏭</div><h3>Своё производство</h3><p>Полный цикл — от заготовки до росписи — в Чите.</p></div>
-        <div class="feature"><div class="feature__icon">💛</div><h3>С любовью</h3><p>Мы делаем то, что нравится нам самим.</p></div>
-        <div class="feature"><div class="feature__icon">♻️</div><h3>Бережно к природе</h3><p>Используем материалы ответственно и без отходов.</p></div>
-      </div>
-      <div style="text-align:center;margin-top:40px"><button class="btn btn--primary btn--lg" onclick="navigate('#/catalog')">Смотреть каталог</button></div>
+      <div style="text-align:center;margin-top:36px"><a class="btn btn--primary btn--lg" href="#/catalog">Перейти в каталог</a></div>
     </div>`;
 }
 
@@ -734,39 +724,18 @@ function renderContacts() {
     <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Контакты</div><h1>Контакты</h1></div>
     <div class="container section" style="padding-top:16px">
       <div class="contact-grid">
-        <div>
-          <div class="info-block">
-            <h3>📍 Адрес</h3><p>г. Чита, ул. Бутина, 44, помещение 1</p>
-            <h3>📞 Телефон</h3><p><a href="tel:+79143592767" style="color:var(--terra);font-weight:700;font-size:18px">+7 914 359-27-67</a></p>
-            <h3>💬 Мессенджеры</h3>
-            <p><a href="https://wa.me/79143592767" target="_blank" rel="noopener" style="color:var(--green);font-weight:700">WhatsApp</a> · <a href="https://t.me/+79143592767" target="_blank" rel="noopener" style="color:#2f6fb0;font-weight:700">Telegram</a> — +7 914 359-27-67</p>
-            <h3>🕒 Режим работы</h3><p>Пн–Пт: 9:00 – 19:00<br>Сб: 10:00 – 16:00<br>Вс: выходной</p>
-          </div>
+        <div class="info-block">
+          <h2>Магазин тканей «Матрёшка»</h2>
+          <h3>📍 Адрес</h3><p>г. Чита, ул. Бутина, 44, помещение 1</p>
+          <h3>📞 Телефон</h3><p><a href="tel:+79143592767" style="color:var(--terra);font-weight:700;font-size:20px">+7 914 359-27-67</a></p>
+          <p>Уточните по телефону наличие, цены, режим работы и возможность самовывоза. В тестовой версии оформление заказа пока отключено.</p>
+          <p><a class="btn btn--primary" href="#/catalog">Открыть каталог</a></p>
         </div>
-        <div>
-          <div class="map-embed">
-            <iframe loading="lazy" src="https://yandex.ru/map-widget/v1/?ll=113.501049%2C52.033635&z=16&text=Чита%20улица%20Бутина%2044" title="Карта — ул. Бутина, 44, Чита"></iframe>
-          </div>
-          <div class="info-block" style="margin-top:22px">
-            <h3>Напишите нам</h3>
-            <div class="form-error" id="fbErr" hidden></div>
-            <form id="feedbackForm">
-              <div class="form-row"><label>Имя*</label><input name="name" required></div>
-              <div class="form-row"><label>Телефон</label><input name="phone" type="tel" placeholder="+7 914 000-00-00"></div>
-              <div class="form-row"><label>Сообщение*</label><textarea name="message" required></textarea></div>
-              <button class="btn btn--primary" type="submit">Отправить</button>
-            </form>
-          </div>
+        <div class="map-embed">
+          <iframe loading="lazy" src="https://yandex.ru/map-widget/v1/?ll=113.501049%2C52.033635&z=16&text=Чита%20улица%20Бутина%2044" title="Карта — ул. Бутина, 44, Чита"></iframe>
         </div>
       </div>
     </div>`;
-  $('#feedbackForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    try { await api('/feedback', { method: 'POST', body: { name: f.get('name'), phone: f.get('phone'), message: f.get('message') } });
-      toast('Сообщение отправлено!', 'success'); e.target.reset(); }
-    catch (err) { toast(err.message, 'error'); }
-  });
 }
 
 // ============================================================
