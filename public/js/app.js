@@ -262,7 +262,7 @@ function productCard(p) {
     <article class="card">
       <div class="card__media" onclick="navigate('#/product/${esc(p.slug)}')">
         <img src="${esc(p.images?.[0]||'')}" alt="${esc(p.name)}" loading="lazy">
-        <span class="card__badge">Ручная работа</span>
+        <span class="card__badge">${esc(p.category || "В наличии")}</span>
         <button class="card__fav ${isFav?'active':''}" data-fav="${p.id}" onclick="event.stopPropagation();toggleFav(${p.id})">♥</button>
       </div>
       <div class="card__body">
@@ -326,8 +326,8 @@ async function renderHome() {
       <div class="container">
         <div class="hero__solo">
           <span class="hero__eyebrow">Чита · Забайкальский край</span>
-          <h1>Сделано в Чите.<br><span class="accent">Сделано с любовью.</span></h1>
-          <p class="hero__lead">Мы — мастера из Читы, которые делают настоящие вещи руками. Тепло, натуральность и сибирские традиции в каждом изделии.</p>
+          <h1>Ткани, в которые<br><span class="accent">легко влюбиться.</span></h1>
+          <p class="hero__lead">Магазин тканей и фурнитуры «Матрёшка» в Чите. Выбирайте материалы для своих идей — с фотографиями, ценами и актуальным ассортиментом.</p>
           <div class="hero__cta">
             <button class="btn btn--primary btn--lg" onclick="navigate('#/catalog')">Смотреть каталог</button>
             <button class="btn btn--ghost btn--lg" onclick="navigate('#/about')">О мануфактуре</button>
@@ -339,10 +339,10 @@ async function renderHome() {
     <section class="section">
       <div class="container">
         <div class="features">
-          <div class="feature"><div class="feature__icon">✋</div><h3>Ручная работа</h3><p>Каждое изделие создаётся мастером вручную — двух одинаковых не бывает.</p></div>
-          <div class="feature"><div class="feature__icon">🌲</div><h3>Сибирские материалы</h3><p>Кедр, берёза, лён, шерсть, береста — только натуральное.</p></div>
-          <div class="feature"><div class="feature__icon">📦</div><h3>Доставка по России</h3><p>Почта России и СДЭК. Или самовывоз в Чите.</p></div>
-          <div class="feature"><div class="feature__icon">🛡️</div><h3>Гарантия качества</h3><p>Отвечаем за каждую вещь. Не понравилось — вернём деньги.</p></div>
+          <div class="feature"><div class="feature__icon">🧵</div><h3>Ткани на любой вкус</h3><p>От натуральных материалов до нарядных тканей для особых проектов.</p></div>
+          <div class="feature"><div class="feature__icon">🎨</div><h3>Вдохновение для шитья</h3><p>Удобно сравнивайте фактуру, состав и цену материалов.</p></div>
+          <div class="feature"><div class="feature__icon">📍</div><h3>В самом сердце Читы</h3><p>Магазин «Матрёшка», ул. Бутина, 44, помещение 1.</p></div>
+          <div class="feature"><div class="feature__icon">⚡</div><h3>Удобный каталог</h3><p>Быстрый поиск, фильтры и загрузка товаров по страницам.</p></div>
         </div>
       </div>
     </section>
