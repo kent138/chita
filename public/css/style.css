@@ -561,7 +561,7 @@ img { max-width: 100%; display: block; }
 .v2-preview #favBtn,
 .v2-preview #authButtons,
 .v2-preview #userMenu,
-.v2-preview #menuModeration,
+
 .v2-preview .card__foot .btn,
 .v2-preview button[onclick*="addToCart"] { display: none !important; }
 .catalog-more { display: flex; justify-content: center; margin: 30px 0; }
@@ -630,3 +630,27 @@ img { max-width: 100%; display: block; }
 
 /* Respect semantic hidden state in catalog pagination. */
 .v2-preview #catMore[hidden] { display: none !important; }
+
+/* Store launch gate and admin improvements */
+.v2-preview #addCartBtn,
+.v2-preview #buyNowBtn,
+.v2-preview .v2-review-form,
+.v2-preview .card__fav,
+.v2-preview .product__actions .card__fav { display:none!important; }
+.v2-review-form { max-width:520px; border-top:1px solid var(--cream-2); padding-top:20px; }
+.v2-review-form textarea { min-height:95px; }
+.admin-toolbar #adminSearch {
+  min-width:190px;
+  width:min(360px,100%);
+  padding:11px 14px;
+  border:1px solid #ded5c9;
+  background:#fff;
+  border-radius:10px;
+}
+.admin-table tr[hidden] { display:none!important; }
+.admin-table td img { object-fit:cover;border-radius:8px; }
+.consent-row { margin-top:14px; padding:12px; border:1px solid #e4d9cc; border-radius:10px; }
+@media (max-width:650px) {
+  .admin-toolbar { flex-wrap:wrap; }
+  .admin-toolbar #adminSearch { flex:1 1 100%; }
+}
