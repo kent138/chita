@@ -588,7 +588,7 @@ async function renderCheckout() {
 
           <div class="info-block">
             <h3>Дополнительно</h3>
-            <div class="checkbox-row"><input type="checkbox" name="giftWrap" id="giftWrap"><label for="giftWrap" style="margin:0">🎁 Подарочная упаковка (+150 ₽)</label></div>
+            
             <div class="form-row"><label>Комментарий к заказу</label><textarea name="comment" placeholder="Пожелания по заказу, удобное время доставки…"></textarea></div>
           </div>
           <label class="checkbox-row consent-row"><input id="orderConsent" type="checkbox" required><span>Согласен(на) на обработку контактных данных для оформления заказа</span></label>
@@ -597,43 +597,24 @@ async function renderCheckout() {
         <aside class="filters checkout-summary">
           <h3>Ваш заказ</h3>
           <div id="checkoutItems"></div>
-          <div class="form-row" style="margin-top:14px"><label>Промокод</label>
-            <div style="display:flex;gap:8px"><input id="promoInput" placeholder="СИБИРЬ10"><button class="btn btn--ghost btn--sm" id="applyPromo">OK</button></div>
-            <div class="form-hint" id="promoHint">Попробуйте: СИБИРЬ10, ЧИТА15</div>
-          </div>
-          <div class="cart-total" style="margin-top:16px"><span>Итого:</span> <b id="checkoutTotal">${money(cartTotal())}</b></div>
-          <p class="form-hint">Стоимость доставки уточняется отдельно до подтверждения заказа.</p>
+          <div class="cart-total" style="margin-top:16px"><span>Стоимость товаров:</span> <b id="checkoutTotal">${money(cartTotal())}</b></div>
+          <p class="form-hint">Стоимость и сроки доставки согласуются с магазином до оплаты. Онлайн-оплата не подключена.</p>
           <button class="btn btn--primary btn--block btn--lg" id="placeOrderBtn">Отправить заказ</button>
-          <p class="form-hint" style="text-align:center">Нажимая кнопку, вы соглашаетесь с условиями</p>
+          <p class="form-hint" style="text-align:center">Отправка заявки не означает проведение платежа.</p>
         </aside>
       </div>
     </div>`;
 
-  let discount = 0, appliedPromo = '';
   function renderSummary() {
     $('#checkoutItems').innerHTML = State.cart.map(i => `
       <div style="display:flex;justify-content:space-between;font-size:14px;padding:6px 0;border-bottom:1px solid var(--cream-2)">
         <span>${esc(i.name)} × ${i.quantity}</span><b>${money(i.price*i.quantity)}</b></div>`).join('');
-    let total = cartTotal();
-    if (discount) total = Math.round(total * (1 - discount));
-    if ($('#giftWrap').checked) total += 150;
-    $('#checkoutTotal').textContent = money(total);
+    $('#checkoutTotal').textContent = money(cartTotal());
   }
   renderSummary();
-
-  // Показ поля адреса при выборе доставки
   $$('input[name="delivery"]').forEach(r => r.addEventListener('change', () => {
     $('#addressRow').hidden = r.value === 'Самовывоз';
   }));
-  $('#giftWrap').addEventListener('change', renderSummary);
-
-  $('#applyPromo').addEventListener('click', () => {
-    const code = $('#promoInput').value.trim().toUpperCase();
-    if (['СИБИРЬ10','SIBIR10'].includes(code)) { discount = 0.10; appliedPromo = code; $('#promoHint').textContent = '✓ Скидка 10% применена'; $('#promoHint').style.color='var(--green)'; }
-    else if (['ЧИТА15','CHITA15'].includes(code)) { discount = 0.15; appliedPromo = code; $('#promoHint').textContent = '✓ Скидка 15% применена'; $('#promoHint').style.color='var(--green)'; }
-    else { discount = 0; appliedPromo=''; $('#promoHint').textContent = 'Промокод не найден'; $('#promoHint').style.color='var(--hohloma)'; }
-    renderSummary();
-  });
 
   $('#placeOrderBtn').addEventListener('click', async () => {
     const form = $('#checkoutForm');
@@ -657,7 +638,6 @@ async function renderCheckout() {
       customerName: form.customerName.value, customerPhone: form.customerPhone.value,
       deliveryMethod: delivery, deliveryAddress: form.deliveryAddress.value,
       paymentMethod: payment, comment: form.comment.value,
-      giftWrap: $('#giftWrap').checked, promoCode: appliedPromo,
       items: State.cart.map(i => ({ id: i.id, quantity: i.quantity }))
     };
     try {
@@ -667,7 +647,7 @@ async function renderCheckout() {
         <div style="text-align:center">
           <div style="font-size:64px">🎉</div>
           <h2>Заказ №${res.orderId} оформлен!</h2>
-          <p style="color:var(--ink-soft);margin:14px 0">Спасибо за доверие! Мы уже получили ваш заказ и скоро свяжемся с вами по телефону.</p>
+          <p style="color:var(--ink-soft);margin:14px 0">Заявка сохранена. Магазин свяжется с вами для подтверждения наличия, доставки и оплаты.</p>
           <p class="product__price">${money(res.total)}</p>
           <button class="btn btn--primary btn--lg" style="margin-top:16px" onclick="closeModal();navigate('#/')">На главную</button>
         </div>`);
