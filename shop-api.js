@@ -6,9 +6,10 @@ const orders=require('./shop-orders');
 function sellerReady(){
   const name=String(process.env.SELLER_LEGAL_NAME||'').trim();
   const ogrn=String(process.env.SELLER_OGRN||'').replace(/\D/g,'');
+  const inn=String(process.env.SELLER_INN||'').replace(/\D/g,'');
   const address=String(process.env.SELLER_LEGAL_ADDRESS||'').trim();
   const contact=String(process.env.SELLER_CONTACT||'').trim();
-  return name.length>5 && [13,15].includes(ogrn.length) && address.length>10 && contact.length>5;
+  return name.length>5 && ([13,15].includes(ogrn.length) || [10,12].includes(inn.length)) && address.length>10 && contact.length>5;
 }
 function ordersEnabled(){
   return process.env.SHOP_OPEN==='1' && process.env.DATA_LOCALIZATION_REVIEWED==='1' && String(process.env.JWT_SECRET||'').length>=32 && String(process.env.ADMIN_PASSWORD||'').length>=12 && sellerReady();
@@ -32,7 +33,7 @@ function register(app){
       const readyForOrders=ordersEnabled();
       res.set('Cache-Control','no-store');
       res.json({version:'2.1',databaseReady:true,acceptingOrders:readyForOrders,
-        adminConfigured:adminOk && secretOk,sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN,address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
+        adminConfigured:adminOk && secretOk,sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
         paymentsOnline:false,shippingPrice:'Уточняется магазином при подтверждении'});
     }catch(e){
       console.error('[SHOP-BOOT]',e.message);
