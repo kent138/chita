@@ -896,37 +896,59 @@ function requireAdmin(onSuccess) {
 }
 
 async function openCatalogAdmin() {
-  const products = await api('/products');
+  let currentPage=1, requestNumber=0, searchTimer;
   openModal(`
     <h2>✎ Управление каталогом</h2>
     <div class="admin-toolbar">
-      <span class="catalog__count">Товаров: ${products.length}</span>
-      <input id="adminSearch" type="search" placeholder="Поиск товара…" aria-label="Поиск товаров">
+      <span class="catalog__count" id="admProductCount">Загрузка…</span>
+      <input id="adminSearch" type="search" placeholder="Поиск по каталогу…" aria-label="Поиск товаров">
       <button class="btn btn--primary" id="addProductBtn">+ Добавить товар</button>
     </div>
     <div style="overflow-x:auto">
-    <table class="admin-table">
-      <thead><tr><th>Фото</th><th>Название</th><th>Категория</th><th>Цена</th><th>Склад</th><th></th></tr></thead>
-      <tbody id="admProducts">
-        ${products.map(p=>`<tr>
-          <td><img loading="lazy" decoding="async" width="52" height="52" src="${esc(p.images?.[0]||'')}"></td>
-          <td><b>${esc(p.name)}</b></td>
-          <td>${esc(p.category)}</td>
-          <td>${money(p.price)}</td>
-          <td>${p.stock}</td>
-          <td><div class="admin-actions">
-            <button class="btn btn--ghost btn--sm" onclick="editProduct(${p.id})">✎</button>
-            <button class="btn btn--danger btn--sm" onclick="deleteProduct(${p.id})">🗑</button>
-          </div></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-    </div>`, 'xwide');
-  $('#addProductBtn').addEventListener('click', () => productForm());
-  $('#adminSearch').addEventListener('input',e=>{
-    const q=e.target.value.toLocaleLowerCase('ru').trim();
-    $('#admProducts').querySelectorAll('tr').forEach(row=>{row.hidden=!row.textContent.toLocaleLowerCase('ru').includes(q);});
+      <table class="admin-table">
+        <thead><tr><th>Фото</th><th>Название</th><th>Категория</th><th>Цена</th><th>Склад</th><th>Действия</th></tr></thead>
+        <tbody id="admProducts"><tr><td colspan="6">Загружаем товары…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="admin-pagination" style="display:flex;align-items:center;justify-content:center;gap:15px;margin-top:16px">
+      <button id="admPrev" class="btn btn--ghost btn--sm">Назад</button>
+      <span id="admPageLabel"></span>
+      <button id="admNext" class="btn btn--ghost btn--sm">Вперёд</button>
+    </div>
+  `, 'xwide');
+  const root=$('#modalContent');
+  const load=async()=>{
+    const n=++requestNumber, query=root.querySelector('#adminSearch').value.trim();
+    const params=new URLSearchParams({page:String(currentPage),limit:'50'});
+    if(query)params.set('search',query);
+    const tbody=root.querySelector('#admProducts');
+    tbody.innerHTML='<tr><td colspan="6">Загружаем…</td></tr>';
+    try{
+      const result=await api('/admin/products?'+params.toString(),{admin:true});
+      if(n!==requestNumber||!root.querySelector('#admProducts'))return;
+      root.querySelector('#admProductCount').textContent='Товаров: '+result.total;
+      tbody.innerHTML=result.items.length ? result.items.map(p=>`<tr>
+        <td><img loading="lazy" decoding="async" width="52" height="52" src="${esc(p.images?.[0]||'')}" alt=""></td>
+        <td><b>${esc(p.name)}</b></td>
+        <td>${esc(p.category)}</td>
+        <td>${money(p.price)}</td>
+        <td>${p.stock}</td>
+        <td><div class="admin-actions"><button class="btn btn--ghost btn--sm" onclick="editProduct(${p.id})" aria-label="Изменить товар">✎</button><button class="btn btn--danger btn--sm" onclick="deleteProduct(${p.id})" aria-label="Удалить товар">🗑</button></div></td>
+      </tr>`).join(''):'<tr><td colspan="6">Товары не найдены.</td></tr>';
+      root.querySelector('#admPageLabel').textContent=currentPage+' / '+Math.max(1,result.pages);
+      root.querySelector('#admPrev').disabled=currentPage<=1;
+      root.querySelector('#admNext').disabled=currentPage>=result.pages;
+    }catch(err) {
+      if(n===requestNumber)tbody.innerHTML='<tr><td colspan="6">'+esc(err.message)+'</td></tr>';
+    }
+  };
+  root.querySelector('#addProductBtn').addEventListener('click',()=>productForm());
+  root.querySelector('#admPrev').addEventListener('click',()=>{currentPage=Math.max(1,currentPage-1);load();});
+  root.querySelector('#admNext').addEventListener('click',()=>{currentPage++;load();});
+  root.querySelector('#adminSearch').addEventListener('input',()=>{
+    clearTimeout(searchTimer);currentPage=1;searchTimer=setTimeout(load,250);
   });
+  load();
 }
 
 function productForm(product = null) {
@@ -959,6 +981,7 @@ function productForm(product = null) {
   $('#pfImage').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
+    if(file.size>7*1024*1024){toast('Фотография должна быть меньше 7 МБ','error');e.target.value='';return;}
     const reader = new FileReader();
     reader.onload = () => { imageData = reader.result;
       $('#pfPreview').innerHTML = `<img src="${imageData}" style="width:90px;height:90px;object-fit:cover;border-radius:10px">`; };
@@ -986,9 +1009,10 @@ function productForm(product = null) {
 }
 
 window.editProduct = async (id) => {
-  const list = await api('/products');
-  const p = list.find(x => x.id === id);
-  if (p) productForm(p);
+  try{
+    const data = await api('/products/' + id);
+    if(data.product) productForm(data.product);
+  }catch(err){toast(err.message,'error');}
 };
 window.deleteProduct = async (id) => {
   if (!confirm('Снять товар №' + id + ' с продажи? Действие сохранит историю заказов.')) return;
