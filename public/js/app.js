@@ -6,17 +6,26 @@
 'use strict';
 
 // -------------------- Состояние приложения --------------------
+function storedJSON(key,fallback){
+  try {
+    const raw=JSON.parse(localStorage.getItem(key)||'null');
+    return raw===null?fallback:raw;
+  } catch { return fallback; }
+}
+const storedCart=storedJSON('mtr_cart',[]);
+const storedLikes=storedJSON('mtr_fav',[]);
 const State = {
   token: localStorage.getItem('mtr_token') || null,
-  user: JSON.parse(localStorage.getItem('mtr_user') || 'null'),
-  cart: JSON.parse(localStorage.getItem('mtr_cart') || '[]'),
-  favorites: JSON.parse(localStorage.getItem('mtr_fav') || '[]'),
+  user: storedJSON('mtr_user',null),
+  cart: Array.isArray(storedCart)?storedCart.filter(i=>i&&Number.isSafeInteger(i.id)&&i.id>0&&Number.isFinite(Number(i.price))&&Number(i.price)>=0&&Number.isSafeInteger(i.quantity)&&i.quantity>0).slice(0,150):[],
+  favorites: Array.isArray(storedLikes)?[...new Set(storedLikes.map(Number).filter(id=>Number.isSafeInteger(id)&&id>0))].slice(0,1000):[],
   adminPassword: null,          // старое значение больше не используется: вход через защищённую cookie
   adminLockTimer: null,
   moderationTimer: null         // таймер polling для панели модерации
 };
 
 const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, customerAccountsEnabled:false, seller:null };
+const CatalogCache=new Map();
 
 // -------------------- API-обёртка --------------------
 async function api(path, { method = 'GET', body, admin = false } = {}) {
@@ -66,7 +75,9 @@ function saveCart() {
 function saveFav() {
   localStorage.setItem('mtr_fav', JSON.stringify(State.favorites));
   updateFavBadge();
-  if (State.token) api('/auth/favorites', { method: 'PUT', body: { favorites: State.favorites } }).catch(() => {});
+  if (State.token && Shop.customerAccountsEnabled)
+    api('/auth/favorites',{method:'PUT',body:{favorites:State.favorites}})
+      .catch(()=>toast('Избранное сохранено на устройстве, но синхронизация не удалась','error'));
 }
 function updateCartBadge() {
   const count = State.cart.reduce((s, i) => s + i.quantity, 0);
@@ -99,6 +110,23 @@ $('#modalOverlay').addEventListener('click', e => { if (e.target.id === 'modalOv
 //  АВТОРИЗАЦИЯ
 // ============================================================
 function authModal(tab = 'login') {
+  if(!Shop.customerAccountsEnabled){
+    openModal(`
+      <div class="local-profile-intro">
+        <div class="local-profile-intro__icon">♡</div>
+        <h2>Личный кабинет скоро появится</h2>
+        <p>Регистрация и вход по телефону пока недоступны: для хранения данных покупателей необходимо сначала настроить защищённую базу в России.</p>
+        <p>А пока можно добавлять товары в <b>корзину</b> и ставить <b>лайки</b>. Они сохраняются в этом браузере, даже после закрытия сайта.</p>
+        <div class="local-profile-intro__actions">
+          <button class="btn btn--primary" id="openGuestProfile">Моё избранное</button>
+          <button class="btn btn--ghost" id="openGuestCart">Открыть корзину</button>
+        </div>
+        <p class="form-hint">Пароль и телефон пока вводить не нужно. Сохранённые товары на другое устройство не переносятся.</p>
+      </div>`);
+    $('#openGuestProfile').addEventListener('click',()=>{closeModal();navigate('#/account?tab=fav');});
+    $('#openGuestCart').addEventListener('click',()=>{closeModal();openCart();});
+    return;
+  }
   openModal(`
     <div class="modal__tabs">
       <button data-tab="login" class="${tab==='login'?'active':''}">Вход</button>
@@ -177,13 +205,13 @@ function onAuthSuccess(data) {
   closeModal();
   renderAuthUI();
   toast('Добро пожаловать, ' + data.user.name + '!', 'success');
-  // Подтягиваем избранное с сервера
+  // Always reconcile local likes with this account, including new accounts
+  // whose server-side favorites are still empty.
   api('/auth/me').then(me => {
-    if (Array.isArray(me.favorites) && me.favorites.length) {
-      State.favorites = [...new Set([...State.favorites, ...me.favorites])];
-      saveFav();
-    }
-  }).catch(() => {});
+    const remote=Array.isArray(me.favorites)?me.favorites:[];
+    State.favorites=[...new Set([...State.favorites,...remote])];
+    saveFav();
+  }).catch(()=>{});
 }
 
 async function logout() {
@@ -205,51 +233,73 @@ function renderAuthUI() {
 // ============================================================
 //  КОРЗИНА
 // ============================================================
-function addToCart(product, qty = 1) {
-  const existing = State.cart.find(i => i.id === product.id);
-  if (existing) existing.quantity += qty;
-  else State.cart.push({ id: product.id, name: product.name, price: product.price,
-    image: product.images?.[0] || '', quantity: qty });
+
+function addToCart(product,qty=1){
+  const id=Number(product?.id),available=Math.max(0,Math.floor(Number(product?.stock)||0));
+  const add=Math.floor(Number(qty));
+  if(!Number.isSafeInteger(id)||id<=0||!Number.isSafeInteger(add)||add<=0||available<=0){
+    toast('Этот товар сейчас недоступен','error');return;
+  }
+  const existing=State.cart.find(i=>i.id===id);
+  const current=existing?.quantity||0;
+  const amount=Math.min(add,Math.max(0,available-current));
+  if(amount<=0){toast('В корзине уже всё доступное количество','error');return;}
+  if(existing){
+    existing.quantity+=amount;existing.stock=available;existing.price=Number(product.price);
+  }else State.cart.push({
+    id,name:product.name,price:Number(product.price),
+    image:product.images?.[0]||'',quantity:amount,stock:available
+  });
   saveCart();
-  toast('«' + product.name + '» в корзине', 'success');
+  toast('«'+product.name+'» — добавлено в корзину','success');
 }
-function changeQty(id, delta) {
-  const item = State.cart.find(i => i.id === id);
-  if (!item) return;
-  item.quantity += delta;
-  if (item.quantity <= 0) State.cart = State.cart.filter(i => i.id !== id);
-  saveCart(); renderCart();
+function addToCartFromCatalog(id){
+  const product=CatalogCache.get(Number(id));
+  if(product)addToCart(product);
+  else toast('Откройте карточку товара и попробуйте снова','error');
 }
-function removeFromCart(id) { State.cart = State.cart.filter(i => i.id !== id); saveCart(); renderCart(); }
-function cartTotal() { return State.cart.reduce((s, i) => s + i.price * i.quantity, 0); }
-
-function openCart() { $('#cartOverlay').hidden = false; $('#cartDrawer').hidden = false; renderCart(); }
-function closeCart() { $('#cartOverlay').hidden = true; $('#cartDrawer').hidden = true; }
-
-function renderCart() {
-  const body = $('#cartItems'), foot = $('#cartFoot');
-  if (State.cart.length === 0) {
-    body.innerHTML = '<div class="empty">🪆<br>Корзина пуста.<br>Загляните в каталог!</div>';
-    foot.innerHTML = '<button class="btn btn--ghost btn--block" onclick="navigate(\'#/catalog\');closeCart()">В каталог</button>';
+function changeQty(id,delta){
+  const item=State.cart.find(i=>i.id===id);
+  if(!item)return;
+  const next=item.quantity+delta;
+  if(next>Math.max(0,Number(item.stock)||item.quantity)){
+    toast('Больше товара сейчас нет в наличии','error');return;
+  }
+  if(next<=0)State.cart=State.cart.filter(i=>i.id!==id);
+  else item.quantity=next;
+  saveCart();renderCart();
+}
+function removeFromCart(id){State.cart=State.cart.filter(i=>i.id!==id);saveCart();renderCart();}
+function cartTotal(){return State.cart.reduce((sum,item)=>sum+Number(item.price)*item.quantity,0);}
+function openCart(){$('#cartOverlay').hidden=false;$('#cartDrawer').hidden=false;renderCart();}
+function closeCart(){$('#cartOverlay').hidden=true;$('#cartDrawer').hidden=true;}
+function renderCart(){
+  const body=$('#cartItems'),foot=$('#cartFoot');
+  if(!State.cart.length){
+    body.innerHTML='<div class="empty">🪆<br>Корзина пуста.<br>Выберите понравившиеся ткани!</div>';
+    foot.innerHTML='<button class="btn btn--ghost btn--block" onclick="navigate(\'#/catalog\');closeCart()">В каталог</button>';
     return;
   }
-  body.innerHTML = State.cart.map(i => `
+  body.innerHTML=State.cart.map(i=>`
     <div class="cart-item">
       <img src="${esc(i.image)}" alt="${esc(i.name)}">
       <div>
         <div class="cart-item__name">${esc(i.name)}</div>
         <div class="cart-item__price">${money(i.price)}</div>
         <div class="qty">
-          <button onclick="changeQty(${i.id},-1)">−</button>
+          <button aria-label="Уменьшить количество" onclick="changeQty(${i.id},-1)">−</button>
           <span>${i.quantity}</span>
-          <button onclick="changeQty(${i.id},1)">+</button>
+          <button aria-label="Увеличить количество" onclick="changeQty(${i.id},1)">+</button>
         </div>
       </div>
-      <button class="cart-item__remove" onclick="removeFromCart(${i.id})">🗑</button>
+      <button class="cart-item__remove" aria-label="Удалить товар" onclick="removeFromCart(${i.id})">🗑</button>
     </div>`).join('');
-  foot.innerHTML = `
+  foot.innerHTML=`
     <div class="cart-total"><span>Итого:</span> <b>${money(cartTotal())}</b></div>
-    <button class="btn btn--primary btn--block btn--lg" onclick="navigate('#/checkout');closeCart()">Оформить заказ</button>`;
+    ${Shop.acceptingOrders
+      ?'<button class="btn btn--primary btn--block btn--lg" onclick="navigate(\'#/checkout\');closeCart()">Оформить заказ</button>'
+      :'<p class="cart-note">Товары сохранены на этом устройстве. Оформление онлайн-заказов пока не подключено.</p><a class="btn btn--primary btn--block" href="tel:+79143592767">Связаться с магазином</a>'}
+    <button class="btn btn--ghost btn--block" onclick="navigate('#/catalog');closeCart()">Продолжить выбор</button>`;
 }
 
 // ============================================================
@@ -260,7 +310,14 @@ function toggleFav(id) {
   if (State.favorites.includes(id)) State.favorites = State.favorites.filter(f => f !== id);
   else State.favorites.push(id);
   saveFav();
-  $$('.card__fav[data-fav="' + id + '"]').forEach(b => b.classList.toggle('active', State.favorites.includes(id)));
+  $('.card__fav[data-fav="' + id + '"]').forEach(b=>{
+    const active=State.favorites.includes(id);
+    b.classList.toggle('active',active);
+    b.setAttribute('aria-pressed',String(active));
+    b.setAttribute('aria-label',active?'Убрать из избранного':'Добавить в избранное');
+    b.title=active?'Убрать из избранного':'В избранное';
+  });
+  if(window.location.hash.startsWith('#/account?tab=fav'))router();
 }
 
 // ============================================================
@@ -268,13 +325,14 @@ function toggleFav(id) {
 // ============================================================
 function productCard(p) {
   const inStock = p.stock > 0;
+  CatalogCache.set(Number(p.id),p);
   const isFav = State.favorites.includes(p.id);
   return `
     <article class="card">
       <div class="card__media" onclick="navigate('#/product/${esc(p.slug)}')">
         <img src="${esc(p.images?.[0]||'')}" alt="${esc(p.name)}" loading="lazy">
         <span class="card__badge">${esc(p.category || "В наличии")}</span>
-        <button class="card__fav ${isFav?'active':''}" data-fav="${p.id}" onclick="event.stopPropagation();toggleFav(${p.id})">♥</button>
+        <button type="button" class="card__fav ${isFav?'active':''}" data-fav="${p.id}" aria-pressed="${isFav}" aria-label="${isFav?'Убрать из избранного':'Добавить в избранное'}" title="${isFav?'Убрать из избранного':'В избранное'}" onclick="event.stopPropagation();toggleFav(${p.id})">♥</button>
       </div>
       <div class="card__body">
         <span class="card__cat">${esc(p.category)}</span>
@@ -282,8 +340,9 @@ function productCard(p) {
         <div class="card__stock ${inStock?'in':'out'}">${inStock?'✓ В наличии':'Нет в наличии'}</div>
         <div class="card__foot">
           <span class="card__price">${money(p.price)}</span>
-          <button class="btn btn--primary btn--sm" onclick="navigate('#/product/${esc(p.slug)}')">Подробнее</button>
+          <button class="btn btn--ghost btn--sm" onclick="navigate('#/product/${esc(p.slug)}')">Подробнее</button>
         </div>
+        <button class="btn btn--primary btn--sm card__add" onclick="addToCartFromCatalog(${p.id})" ${inStock?'':'disabled'}>${inStock?'В корзину':'Нет в наличии'}</button>
       </div>
     </article>`;
 }
@@ -512,11 +571,11 @@ async function renderProduct(slug) {
           <div class="product__price">${money(p.price)}</div>
           <div class="product__stock" style="color:${inStock?'var(--green)':'var(--hohloma)'}">${inStock?'✓ В наличии ('+p.stock+' шт.)':'Нет в наличии'}</div>
           <div class="product__actions">
-            ${Shop.acceptingOrders?'':'<span class="v2-purchase-note">Оформление заказов станет доступно после настройки магазина.</span>'}
+            ${Shop.acceptingOrders?'':'<span class="v2-purchase-note">Добавляйте понравившиеся товары в корзину. Оформление онлайн-заказов пока недоступно.</span>'}
             <button class="btn btn--primary" id="addCartBtn" ${inStock?'':'disabled'}>В корзину</button>
             <button class="btn btn--ghost" id="buyNowBtn" ${inStock?'':'disabled'}>Купить сейчас</button>
             
-            <button class="btn btn--ghost card__fav ${State.favorites.includes(p.id)?'active':''}" data-fav="${p.id}" onclick="toggleFav(${p.id})" style="width:auto">♥</button>
+            <button type="button" class="btn btn--ghost card__fav ${State.favorites.includes(p.id)?'active':''}" data-fav="${p.id}" aria-pressed="${State.favorites.includes(p.id)}" aria-label="Добавить или убрать из избранного" onclick="toggleFav(${p.id})" style="width:auto">♥</button>
           </div>
           <div class="product__section"><h3>Описание</h3><p>${esc(p.description)}</p></div>
           ${p.composition?`<div class="product__section"><h3>Состав и материалы</h3><p>${esc(p.composition)}</p></div>`:''}
@@ -842,24 +901,43 @@ function renderPrivacy() {
 //  СТРАНИЦА: ЛИЧНЫЙ КАБИНЕТ
 // ============================================================
 async function renderAccount(_m, params) {
-  if (!State.token) { authModal('login'); navigate('#/'); return; }
-  const tab = params.get('tab') || 'orders';
+  const signedIn=!!State.token&&Shop.customerAccountsEnabled;
+  const tab=params.get('tab')||(signedIn?'orders':'fav');
   app.innerHTML = `
-    <div class="container page-head"><h1>Личный кабинет</h1><p style="color:var(--ink-soft)">${esc(State.user.name)} · ${esc(State.user.phone)}</p></div>
+    <div class="container page-head">
+      <h1>${signedIn?'Личный кабинет':'Мой профиль'}</h1>
+      <p style="color:var(--ink-soft)">${signedIn?esc(State.user?.name||'Покупатель')+' · '+esc(State.user?.phone||''):'Ваши сохранённые товары на этом устройстве'}</p>
+    </div>
     <div class="container section" style="padding-top:16px">
       <div class="account">
         <nav class="account__nav">
-          <button data-tab="orders" class="${tab==='orders'?'active':''}">📦 История заказов</button>
-          <button data-tab="fav" class="${tab==='fav'?'active':''}">♥ Избранное</button>
-          <button data-tab="address" class="${tab==='address'?'active':''}">📍 Адреса доставки</button>
+          ${signedIn?`<button data-tab="orders" class="${tab==='orders'?'active':''}">📦 История заказов</button>`:''}
+          <button data-tab="fav" class="${tab==='fav'?'active':''}">♥ Понравившиеся (${State.favorites.length})</button>
+          <button data-tab="cart" class="${tab==='cart'?'active':''}">🛒 Моя корзина (${State.cart.reduce((n,i)=>n+i.quantity,0)})</button>
+          ${signedIn?`<button data-tab="address" class="${tab==='address'?'active':''}">📍 Адреса доставки</button>`:''}
         </nav>
         <div id="accountBody"></div>
+        ${signedIn?'':`<p class="local-profile-hint">Избранное и корзина сохраняются только в этом браузере. Для синхронизации между устройствами позже будет доступен вход в аккаунт.</p>`}
       </div>
     </div>`;
   $$('.account__nav button').forEach(b => b.addEventListener('click', () => navigate('#/account?tab=' + b.dataset.tab)));
   const body = $('#accountBody');
 
-  if (tab === 'orders') {
+  if (tab === 'cart') {
+    if(State.cart.length){
+      const list=State.cart.map(i=>`
+        <div class="account-cart-item">
+          <img src="${esc(i.image)}" alt="${esc(i.name)}">
+          <div><strong>${esc(i.name)}</strong><p>${money(i.price)} · ${i.quantity} шт.</p></div>
+          <button class="btn btn--ghost btn--sm" onclick="removeFromCart(${i.id});router()">Удалить</button>
+        </div>`).join('');
+      body.innerHTML=`<div class="account-cart">${list}</div>
+        <div class="cart-total"><span>Сумма корзины</span><b>${money(cartTotal())}</b></div>
+        <button class="btn btn--primary" id="openSavedCart">Открыть корзину</button>`;
+      $('#openSavedCart').addEventListener('click',openCart);
+    }else body.innerHTML='<div class="empty">В корзине пока нет товаров.<br><a href="#/catalog">Открыть каталог</a></div>';
+  }
+  else if (tab === 'orders' && signedIn) {
     body.innerHTML = '<div class="spinner">Загрузка заказов…</div>';
     const orders = await api('/auth/orders');
     body.innerHTML = orders.length ? orders.map(o => `
@@ -875,12 +953,21 @@ async function renderAccount(_m, params) {
   }
   else if (tab === 'fav') {
     body.innerHTML = '<div class="spinner">Загрузка…</div>';
-    const all = await api('/products');
-    const favs = all.filter(p => State.favorites.includes(p.id));
+    const favIDs=new Set(State.favorites);
+    const favs=[];
+    if(favIDs.size){
+      let page=1,totalPages=1;
+      do{
+        const data=await api('/products?limit=48&page='+page);
+        for(const p of data.items||[])if(favIDs.has(p.id))favs.push(p);
+        totalPages=data.pages||1;
+        page++;
+      }while(page<=totalPages && favs.length<favIDs.size && page<=30);
+    }
     body.innerHTML = favs.length ? `<div class="products-grid">${favs.map(productCard).join('')}</div>`
       : '<div class="empty">В избранном пусто.<br>Нажимайте ♥ на товарах, чтобы сохранить их здесь.</div>';
   }
-  else if (tab === 'address') {
+  else if (tab === 'address' && signedIn) {
     const me = await api('/auth/me');
     const addresses = me.addresses || [];
     body.innerHTML = `
@@ -1256,7 +1343,7 @@ $('#loginBtn').addEventListener('click', () => authModal('login'));
 $('#registerBtn').addEventListener('click', () => authModal('register'));
 $('#logoutBtn').addEventListener('click', logout);
 $('#accountBtn').addEventListener('click', () => navigate('#/account'));
-$('#favBtn').addEventListener('click', () => { if (State.token) navigate('#/account?tab=fav'); else authModal('login'); });
+$('#favBtn').addEventListener('click', () => navigate('#/account?tab=fav'));
 $('#cartBtn').addEventListener('click', openCart);
 $('#cartClose').addEventListener('click', closeCart);
 $('#cartOverlay').addEventListener('click', closeCart);
@@ -1303,6 +1390,10 @@ async function initializeShop(){
     $('#menuModeration').hidden=!adminReady;
     $('#menuRequests').hidden=!adminReady;
     $('#menuReviews').hidden=!adminReady;
+    if(!Shop.customerAccountsEnabled&&State.token){
+      State.token=null;State.user=null;
+      localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');
+    }
     renderAuthUI();
     if(Shop.customerAccountsEnabled&&State.token){
       try{const me=await api('/auth/me');State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));}
