@@ -545,3 +545,37 @@ img { max-width: 100%; display: block; }
 .mobile-nav { position: fixed; inset: 0; z-index: 250; background: var(--paper); padding: 24px; display: flex; flex-direction: column; gap: 6px; }
 .mobile-nav a { padding: 14px; font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--cream-2); }
 .mobile-nav__close { align-self: flex-end; }
+
+
+/* Matreshka 2.0 — safe catalog preview */
+.v2-notice {
+  background: #2f4a42;
+  color: #fff;
+  padding: 11px 18px;
+  text-align: center;
+  font: 600 13px/1.55 "Nunito Sans",sans-serif;
+  letter-spacing: .01em;
+}
+.v2-notice a { color: #f9d6ad; text-decoration: underline; text-underline-offset: 3px; }
+.v2-preview #cartBtn,
+.v2-preview #favBtn,
+.v2-preview #authButtons,
+.v2-preview #userMenu,
+.v2-preview #menuModeration,
+.v2-preview .card__foot .btn,
+.v2-preview button[onclick*="addToCart"] { display: none !important; }
+.catalog-more { display: flex; justify-content: center; margin: 30px 0; }
+.catalog-feedback { padding: 14px 0; color: var(--ink-soft); text-align: center; }
+.catalog-feedback:empty { display: none; }
+.catalog-skeleton {
+  height: 300px;
+  border-radius: 12px;
+  background: linear-gradient(110deg, #ece6de 20%, #f7f2ed 45%, #ece6de 70%);
+  background-size: 230% 100%;
+  animation: v2Shimmer 1.4s ease-in-out infinite;
+}
+@keyframes v2Shimmer { to { background-position-x: -230%; } }
+@media(max-width:640px) {
+  .v2-notice { font-size: 12px; padding: 9px 12px; }
+  .catalog-skeleton { height: 220px; }
+}
