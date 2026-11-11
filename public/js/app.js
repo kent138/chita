@@ -1613,6 +1613,7 @@ async function initializeShop(){
     Shop.acceptingOrders=!!cfg.acceptingOrders;
     Shop.adminConfigured=!!cfg.adminConfigured;
     Shop.customerAccountsEnabled=!!cfg.customerAccountsEnabled;
+    Shop.cloudAccountsEnabled=!!cfg.cloudAccountsEnabled;
     Shop.seller=cfg.seller||null;
     document.body.classList.toggle('v2-preview',!Shop.acceptingOrders);
     const adminReady=Shop.databaseReady&&Shop.adminConfigured;
@@ -1621,6 +1622,26 @@ async function initializeShop(){
     $('#menuModeration').hidden=!adminReady;
     $('#menuRequests').hidden=!adminReady;
     $('#menuReviews').hidden=!adminReady;
+    if(Shop.cloudAccountsEnabled){
+      if(State.localUser)exitLocalProfile();
+      if(State.token==='cloud'){
+        try{
+          const me=await api('/cloud-auth/me');
+          await activateCloudProfile(me,false);
+        }catch(e){
+          State.token=null;State.user=null;
+          localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');
+          State.cart=storedJSON('mtr_cart',[]);
+          State.favorites=storedJSON('mtr_fav',[]);
+          updateCartBadge();updateFavBadge();
+        }
+      }else if(State.token){
+        State.token=null;State.user=null;
+        localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');
+      }
+      renderAuthUI();
+      return;
+    }
     if(!Shop.customerAccountsEnabled&&State.token){
       State.token=null;State.user=null;
       localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');
