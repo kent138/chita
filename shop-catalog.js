@@ -119,6 +119,19 @@ function register(app){
     const r=(await pool.query('INSERT INTO shop_reviews(product_id,user_id,author_name,rating,text) VALUES($1,$2,$3,$4,$5) RETURNING id',[id,req.userId,u.name,rating,text])).rows[0];
     res.status(201).json({id:Number(r.id),pendingModeration:true});
  }));
+ app.get('/api/admin/products',adminAuth,wrap(async(req,res)=>{
+   const page=Math.max(1,Math.floor(Number(req.query.page)||1));
+   const limit=Math.min(100,Math.max(1,Math.floor(Number(req.query.limit)||50)));
+   const q=safeText(req.query.search,120).replace(/[%_]/g,'\\$&');
+   const where=q ? "active=true AND (name ILIKE $1 OR category ILIKE $1 OR material ILIKE $1)" : "active=true";
+   const params=q?['%'+q+'%']:[];
+   const n=Number((await pool.query('SELECT count(*)::int AS n FROM shop_products WHERE '+where,params)).rows[0].n);
+   const rows=(await pool.query('SELECT '+productCols+' FROM shop_products WHERE '+where+
+     ' ORDER BY created_at DESC,id DESC LIMIT $'+(params.length+1)+' OFFSET $'+(params.length+2),
+     [...params,limit,(page-1)*limit])).rows;
+   res.set('Cache-Control','no-store');
+   res.json({items:rows.map(mapProduct),page,limit,total:n,pages:Math.ceil(n/limit)});
+ }));
  app.post('/api/admin/products',adminAuth,wrap(async(req,res)=>{
     const b=req.body||{},v=productData(b),id=Number((await pool.query("SELECT nextval('shop_product_ids') AS id")).rows[0].id);
     const slug=slugify(v.name)+'-'+id;
