@@ -5,7 +5,7 @@ const KEY = 'v2/catalog.json';
 const OLD_URL = 'https://matreshkachita.vercel.app/api/products';
 let cached = null, cachedAt = 0, cachedEtag = null;
 const asyncRoute = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
-const notFound = e => e && (e.name === 'BlobNotFoundError' || e.statusCode === 404 || e.status === 404 || /not found/i.test(e.message || ''));
+const notFound = e => e && (e.name === 'BlobNotFoundError' || e.statusCode === 404 || e.status === 404 || /not found|does not exist|404/i.test(e.message || ''));
 function slugify(s) {
   const m={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ы:'y',э:'e',ю:'yu',я:'ya',ь:'',ъ:''};
   return String(s).toLowerCase().split('').map(c=>m[c]===undefined?c:m[c]).join('').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'tovar';
