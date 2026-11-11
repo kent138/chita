@@ -12,6 +12,7 @@ const State = {
   cart: JSON.parse(localStorage.getItem('mtr_cart') || '[]'),
   favorites: JSON.parse(localStorage.getItem('mtr_fav') || '[]'),
   adminPassword: null,          // старое значение больше не используется: вход через защищённую cookie
+  adminLockTimer: null,
   moderationTimer: null         // таймер polling для панели модерации
 };
 
@@ -33,7 +34,12 @@ async function api(path, { method = 'GET', body, admin = false } = {}) {
     throw new Error('Нет связи с магазином. Проверьте интернет и повторите попытку.');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('Ошибка сервера (код ' + res.status + ')'));
+  if (!res.ok) {
+    const failure = new Error(data.error || ('Ошибка сервера (код ' + res.status + ')'));
+    failure.retryAfterSeconds=Number(data.retryAfterSeconds)||0;
+    failure.status=res.status;
+    throw failure;
+  }
   return data;
 }
 
@@ -83,6 +89,7 @@ function openModal(html, wide = '') {
 function closeModal() {
   $('#modalOverlay').hidden = true;
   document.body.style.overflow = '';
+  if (State.adminLockTimer) { clearInterval(State.adminLockTimer); State.adminLockTimer = null; }
   if (State.moderationTimer) { clearInterval(State.moderationTimer); State.moderationTimer = null; }
 }
 $('#modalClose').addEventListener('click', closeModal);
@@ -906,7 +913,7 @@ async function renderAccount(_m, params) {
 function requireAdmin(onSuccess) {
   openModal(`
     <h2>🔒 Доступ по паролю</h2>
-    <p style="color:var(--ink-soft);margin-bottom:18px">Введите пароль администратора.</p>
+    <p style="color:var(--ink-soft);margin-bottom:18px">Три неверных попытки блокируют вход на 1 минуту, затем на 3, 9 минут и дольше.</p>
     <div class="form-error" id="admErr" hidden></div>
     <form id="admForm">
       <div class="form-row"><input name="password" type="password" placeholder="Пароль" autofocus required></div>
@@ -916,7 +923,27 @@ function requireAdmin(onSuccess) {
     e.preventDefault();
     const pass = new FormData(e.target).get('password');
     try { await api('/admin/login', { method: 'POST', body: { password: pass } }); onSuccess(); }
-    catch (err) { const el=$('#admErr'); el.textContent=err.message; el.hidden=false; }
+    catch (err) {
+      const el=$('#admErr'); el.textContent=err.message; el.hidden=false;
+      if(err.retryAfterSeconds>0){
+        const button=$('#admForm button[type="submit"]');
+        button.disabled=true;
+        if(State.adminLockTimer)clearInterval(State.adminLockTimer);
+        let left=Math.ceil(err.retryAfterSeconds);
+        const update=()=>{
+          if(!el.isConnected){clearInterval(State.adminLockTimer);State.adminLockTimer=null;return;}
+          if(left<=0){
+            clearInterval(State.adminLockTimer);State.adminLockTimer=null;
+            button.disabled=false;el.textContent='Время блокировки прошло. Можете попробовать снова.';
+            return;
+          }
+          const mm=Math.floor(left/60),ss=String(left%60).padStart(2,'0');
+          el.textContent='Вход заблокирован. Повторите через '+mm+':'+ss;
+          left--;
+        };
+        update();State.adminLockTimer=setInterval(update,1000);
+      }
+    }
   });
 }
 
