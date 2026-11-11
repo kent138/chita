@@ -120,13 +120,18 @@ if(!process.env.TEST_DATABASE_URL){
     assert.equal((await ask('/api/products/1')).body.product.stock,0);
   });
   test('reviews are moderated, enquiries are persisted and orders are not deletable',async()=>{
-    const r=await ask('/api/products/1/reviews',{method:'POST',headers:{Cookie:userCookie},
+    const buyerOrder=await ask('/api/orders',{method:'POST',headers:{Cookie:userCookie},
+      body:JSON.stringify({customerName:'Покупатель Тест',customerPhone:'79998887766',
+       deliveryMethod:'Самовывоз',paymentMethod:'При получении',consent:true,
+       idempotencyKey:'review-test-purchase-20261111',items:[{id:2,quantity:1}]})});
+    assert.equal(buyerOrder.status,201);
+    const r=await ask('/api/products/2/reviews',{method:'POST',headers:{Cookie:userCookie},
       body:JSON.stringify({rating:5,text:'Товар очень понравился'})});
     assert.equal(r.status,201);
     const inQueue=await ask('/api/admin/reviews',{headers:{Cookie:adminCookie}});
     assert.ok(inQueue.body.some(x=>Number(x.id)===r.body.id));
     await ask('/api/admin/reviews/'+r.body.id,{method:'PUT',headers:{Cookie:adminCookie},body:JSON.stringify({approved:true})});
-    const reviews=await ask('/api/products/1');
+    const reviews=await ask('/api/products/2');
     assert.ok(reviews.body.reviews.some(x=>Number(x.id)===r.body.id));
     assert.equal((await ask('/api/admin/orders/1',{method:'DELETE',headers:{Cookie:adminCookie}})).status,405);
     const message=await ask('/api/feedback',{method:'POST',body:JSON.stringify({name:'Тест клиент',phone:'79998887766',message:'Можно ли купить шёлк?'})});
