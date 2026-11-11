@@ -176,43 +176,5 @@ module.exports=function(app){
     res.json({imported:items.length,photos:items.reduce((n,p)=>n+(p.images||[]).length,0)});
   }));
 
-  // Temporary migration bridge. Copies ONLY publicly visible catalog data into the
-  // V2 store; the original site's database and administrative API remain untouched.
-  app.post('/api/v2/import-batch',asyncRoute(async(req,res)=>{
-    if(process.env.V2_IMPORT_ENABLED!=='1')return res.status(403).json({error:'Миграция отключена'});
-    try { await head(KEY); return res.status(409).json({error:'Каталог уже перенесён'}); }
-    catch(e) { if(!notFound(e))throw e; }
-    const start=Math.max(0,Math.floor(Number(req.query.start)||0));
-    const count=Math.min(4,Math.max(1,Math.floor(Number(req.query.count)||4)));
-    const response=await fetch('https://matreshkachita.vercel.app/api/products',{signal:AbortSignal.timeout(25000)});
-    if(!response.ok)throw new Error('Не удалось прочитать исходный каталог: '+response.status);
-    const raw=await response.text();
-    const all=JSON.parse(raw);
-    if(!Array.isArray(all)||all.length>10000)throw new Error('Некорректный список товаров');
-    if(start===0) {
-      await put('v2/backup/original-public-catalog.json',raw,
-        {access:'public',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});
-    }
-    const items=all.slice(start,start+count);
-    for(const p of items) p.images=await uploadImages(p.images||[],p.id);
-    await put('v2/staging/batch-'+start+'.json',JSON.stringify(items),
-      {access:'public',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});
-    res.json({done:items.length,start,total:all.length,next:start+items.length});
-  }));
-  app.post('/api/v2/import-finalize',asyncRoute(async(req,res)=>{
-    if(process.env.V2_IMPORT_ENABLED!=='1')return res.status(403).json({error:'Миграция отключена'});
-    try {await head(KEY);return res.status(409).json({error:'Каталог уже перенесён'});}
-    catch(e){if(!notFound(e))throw e;}
-    const total=Math.floor(Number(req.query.total)||0);
-    const step=4;
-    if(total<1||total>10000)return res.status(400).json({error:'Неверное количество товаров'});
-    const items=[];
-    for(let i=0;i<total;i+=step){const batch=await readBlob('v2/staging/batch-'+i+'.json');items.push(...batch);}
-    if(items.length!==total||new Set(items.map(p=>p.id)).size!==total)throw new Error('Не все товары перенесены');
-    if(items.some(p=>!p.images.every(x=>x.startsWith('https://'))))throw new Error('Не все фото перенесены');
-    await put(KEY,JSON.stringify(items),{access:'public',addRandomSuffix:false,
-      contentType:'application/json',cacheControlMaxAge:60});
-    cached=null;res.json({imported:items.length,photos:items.reduce((a,p)=>a+p.images.length,0)});
-  }));
 
 };
