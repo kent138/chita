@@ -6,7 +6,8 @@
   "main": "server-v2.js",
   "scripts": {
     "start": "node server-v2.js",
-    "seed": "node database.js"
+    "seed": "node database.js",
+    "test": "node --test tests/*.test.js"
   },
   "author": "Мануфактура Матрёшка",
   "license": "MIT",
