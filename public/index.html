@@ -29,7 +29,7 @@
   </script>
 </head>
 <body class="v2-preview">
-  <div class="v2-notice" role="status"><strong>Матрёшка 2.0 — тестовая версия</strong> · Здесь можно смотреть каталог и проверять товары. Заказы и личные кабинеты пока отключены. <a href="https://matreshkachita.vercel.app/" target="_blank" rel="noopener">Основной магазин</a></div>
+  <div class="v2-notice" role="status"><strong id="shopNoticeTitle">Матрёшка 2.0 — тестовая версия</strong> · <span id="shopNoticeText">Каталог работает. Подключаем безопасное оформление заказов и личные кабинеты.</span> <a href="https://matreshkachita.vercel.app/" target="_blank" rel="noopener">Основной магазин</a></div>
   <!-- ШАПКА -->
   <header class="header" id="siteHeader">
     <div class="container header__inner">
@@ -76,7 +76,9 @@
           <button class="icon-btn dots" id="dotsBtn" title="Меню">⋯</button>
           <div class="dots-menu__dropdown" id="dotsDropdown" hidden>
             <button id="menuEditCatalog">✎ Редактировать каталог</button>
-            <!-- Модерация заказов доступна только на основном сайте -->
+            <button id="menuModeration">📋 Заказы</button>
+            <button id="menuReviews">⭐ Проверка отзывов</button>
+            <button id="menuRequests">✉️ Обращения</button>
           </div>
         </div>
 
