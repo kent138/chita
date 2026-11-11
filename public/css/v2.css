@@ -49,3 +49,17 @@ body.v2-preview {background:#fcfaf7}
 }
 
 .v2-purchase-note {display:inline-flex;align-items:center;padding:13px 16px;border-radius:10px;color:#684c3d;background:#f3e9df;font-size:14px;line-height:1.4;}
+
+/* Device-only shopper login: clear, compact form on phones and desktops. */
+.local-auth-note {
+  color:#705f52;background:#f7f0e8;border:1px solid #ebdecf;
+  border-radius:12px;font-size:13px;line-height:1.6;
+  padding:13px 15px;margin:18px 0 0;
+}
+.local-auth-subtitle {color:var(--ink-soft);line-height:1.55;margin:8px 0 20px;}
+.modal__tabs {display:flex;gap:8px;}
+.modal__tabs button {flex:1;min-width:0;}
+@media(max-width:560px){
+  .local-auth-note{font-size:12px;padding:11px 12px;}
+  .card__add{padding:12px 8px;font-size:13px;}
+}
