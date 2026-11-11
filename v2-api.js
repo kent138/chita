@@ -2,7 +2,6 @@
 const { get, head, put } = require('@vercel/blob');
 const crypto = require('crypto');
 const KEY = 'v2/catalog.json';
-const OLD_URL = 'https://matreshkachita.vercel.app/api/products';
 let cached = null, cachedAt = 0, cachedEtag = null;
 const asyncRoute = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const notFound = e => e && (e.name === 'BlobNotFoundError' || e.statusCode === 404 || e.status === 404 || /not found|does not exist|404/i.test(e.message || ''));
@@ -39,7 +38,7 @@ function checkAdmin(req,res,next){
 async function saveCatalog(list, originalEtag){
   const b=await put(KEY,JSON.stringify(list),{access:'public',addRandomSuffix:false,
     allowOverwrite:true,ifMatch:originalEtag,contentType:'application/json',cacheControlMaxAge:60});
-  cached=list;cachedAt=Date.now();cachedEtag=b.etag;
+  cached=list;cachedAt=Date.now();cachedEtag=b.etag || (await head(KEY)).etag;
 }
 async function uploadImages(images,id){
   const result=[];
@@ -134,30 +133,5 @@ module.exports=function(app){
     const list=await readCatalog(true),etag=cachedEtag,id=Number(req.params.id);
     if(!list.some(p=>p.id===id))return res.status(404).json({error:'Товар не найден'});
     await saveCatalog(list.filter(p=>p.id!==id),etag);res.json({ok:true});
-  }));
-  // A one-time import of publicly visible catalog products; disabled after catalogue created.
-  app.post('/api/v2/import-batch',asyncRoute(async(req,res)=>{
-    if(process.env.V2_IMPORT_ENABLED!=='1') return res.status(403).json({error:'Импорт отключён'});
-    try{await head(KEY);return res.status(409).json({error:'Каталог уже создан'});}catch(e){if(!notFound(e))throw e;}
-    const start=Math.max(0,Math.floor(Number(req.query.start)||0));
-    const count=Math.min(8,Math.max(1,Math.floor(Number(req.query.count)||4)));
-    const response=await fetch(OLD_URL,{signal:AbortSignal.timeout(20000)});
-    if(!response.ok) throw new Error('Старый каталог недоступен: '+response.status);
-    const source=await response.json();
-    const selected=source.slice(start,start+count);
-    for(const p of selected) p.images=await uploadImages(p.images||[],p.id);
-    await put('v2/staging/batch-'+start+'.json',JSON.stringify(selected),{access:'public',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});
-    res.json({done:selected.length,start,total:source.length,next:start+selected.length});
-  }));
-  app.post('/api/v2/import-finalize',asyncRoute(async(req,res)=>{
-    if(process.env.V2_IMPORT_ENABLED!=='1')return res.status(403).json({error:'Импорт отключён'});
-    try{await head(KEY);return res.status(409).json({error:'Каталог уже создан'});}catch(e){if(!notFound(e))throw e;}
-    const total=Math.floor(Number(req.query.total)||0),step=Math.floor(Number(req.query.step)||4);
-    if(total<1||total>10000||step<1||step>8)return res.status(400).json({error:'Неверные параметры'});
-    const items=[];
-    for(let i=0;i<total;i+=step){const stage=await readBlob('v2/staging/batch-'+i+'.json');items.push(...stage);}
-    if(items.length!==total||new Set(items.map(p=>p.id)).size!==total)throw new Error('Импорт не полный');
-    await put(KEY,JSON.stringify(items),{access:'public',addRandomSuffix:false,contentType:'application/json',cacheControlMaxAge:60});
-    cached=null;res.json({imported:items.length,images:items.reduce((a,p)=>a+(p.images||[]).length,0)});
   }));
 };
