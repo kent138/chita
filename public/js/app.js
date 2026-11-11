@@ -143,6 +143,99 @@ function authModal(tab = 'login') {
   renderAuthForm(tab);
 }
 
+// Local accounts: credentials are never sent to a server.
+function renderLocalAuthForm(tab){
+  $$('.modal__tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  const wrap=$('#authFormWrap');
+  if(tab==='register'){
+    wrap.innerHTML=`
+      <h2>Создать профиль</h2>
+      <p class="local-auth-subtitle">Корзина и лайки будут сохранены в вашем профиле на этом устройстве.</p>
+      <div class="form-error" id="authErr" hidden></div>
+      <form id="localRegisterForm">
+        <div class="form-row"><label>Имя</label><input name="name" minlength="2" maxlength="48" autocomplete="nickname" placeholder="Как к вам обращаться?" required></div>
+        <div class="form-row"><label>Логин</label><input name="username" minlength="3" maxlength="32" autocapitalize="off" autocomplete="username" placeholder="Придумайте логин" required></div>
+        <div class="form-row"><label>Пароль (минимум 10 символов)</label><input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></div>
+        <div class="form-row"><label>Повторите пароль</label><input name="passwordRepeat" type="password" minlength="10" autocomplete="new-password" required></div>
+        <button class="btn btn--primary btn--block btn--lg" type="submit">Зарегистрироваться</button>
+      </form>`;
+    $('#localRegisterForm').addEventListener('submit',async e=>{
+      e.preventDefault();
+      const submit=e.target.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      const f=new FormData(e.target);
+      try{
+        const user=await window.LocalAccounts.register({
+          name:f.get('name'),username:f.get('username'),
+          password:f.get('password'),passwordRepeat:f.get('passwordRepeat')
+        });
+        activateLocalProfile(user,true);
+      }catch(err){showAuthErr(err.message);}
+      finally{submit.disabled=false;}
+    });
+  }else{
+    wrap.innerHTML=`
+      <h2>Войти в профиль</h2>
+      <p class="local-auth-subtitle">Введите логин и пароль профиля, созданного в этом браузере.</p>
+      <div class="form-error" id="authErr" hidden></div>
+      <form id="localLoginForm">
+        <div class="form-row"><label>Логин</label><input name="username" autocomplete="username" required></div>
+        <div class="form-row"><label>Пароль</label><input name="password" type="password" autocomplete="current-password" required></div>
+        <button class="btn btn--primary btn--block btn--lg" type="submit">Войти</button>
+      </form>`;
+    $('#localLoginForm').addEventListener('submit',async e=>{
+      e.preventDefault();
+      const submit=e.target.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      const f=new FormData(e.target);
+      try{
+        const user=await window.LocalAccounts.login({
+          username:f.get('username'),password:f.get('password')
+        });
+        activateLocalProfile(user,false);
+      }catch(err){showAuthErr(err.message);}
+      finally{submit.disabled=false;}
+    });
+  }
+}
+function activateLocalProfile(user,adoptGuest){
+  const previousCart=State.cart,previousLikes=State.favorites;
+  State.localUser=user;
+  const keys=localStorageKeys();
+  let cart=storedJSON(keys.cart,[]),likes=storedJSON(keys.favorites,[]);
+  cart=Array.isArray(cart)?cart:[];
+  likes=Array.isArray(likes)?likes:[];
+  if(adoptGuest){
+    const byId=new Map(cart.map(item=>[item.id,item]));
+    for(const item of previousCart){
+      const existing=byId.get(item.id);
+      if(existing){
+        existing.quantity=Math.min(Math.max(0,Number(existing.stock)||Number(item.stock)||999),
+          Number(existing.quantity)+Number(item.quantity));
+      }else byId.set(item.id,item);
+    }
+    cart=[...byId.values()];
+    likes=[...new Set([...likes,...previousLikes])];
+    localStorage.removeItem('mtr_cart');
+    localStorage.removeItem('mtr_fav');
+  }
+  State.cart=cart.filter(i=>i&&Number.isSafeInteger(i.id)&&Number.isSafeInteger(i.quantity)&&i.quantity>0).slice(0,150);
+  State.favorites=[...new Set(likes.map(Number).filter(id=>Number.isSafeInteger(id)&&id>0))].slice(0,1000);
+  saveCart();saveFav();
+  closeModal();renderAuthUI();
+  toast('Добро пожаловать, '+user.name+'!','success');
+  navigate('#/account?tab=fav');
+  router();
+}
+function exitLocalProfile(){
+  window.LocalAccounts.logout();
+  State.localUser=null;
+  const guestCart=storedJSON('mtr_cart',[]),guestLikes=storedJSON('mtr_fav',[]);
+  State.cart=Array.isArray(guestCart)?guestCart:[];
+  State.favorites=Array.isArray(guestLikes)?guestLikes:[];
+  updateCartBadge();updateFavBadge();
+}
+
 function renderAuthForm(tab) {
   $$('.modal__tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   const wrap = $('#authFormWrap');
