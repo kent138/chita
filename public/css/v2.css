@@ -38,9 +38,9 @@ body.v2-preview {background:#fcfaf7}
   border:2px solid #e2d5c7;border-top-color:#9c543d;animation:v2spin .72s linear infinite;
 }
 @keyframes v2spin {to{transform:rotate(360deg)}}
-.v2-preview #loginBtn,.v2-preview #registerBtn,.v2-preview #cartBtn,.v2-preview #favBtn {
-  display:none !important;
-}
+/* Login can explain the current registration status; basket and likes stay
+   usable on devices without any account or delivery data collection. */
+[hidden] { display:none !important; }
 @media(max-width:640px) {
   .v2-notice {font-size:12px;padding:8px 10px}
   .v2-preview .card {border-radius:12px}
