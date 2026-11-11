@@ -138,6 +138,19 @@ $('#modalOverlay').addEventListener('click', e => { if (e.target.id === 'modalOv
 //  АВТОРИЗАЦИЯ
 // ============================================================
 function authModal(tab = 'login') {
+  if(Shop.cloudAccountsEnabled){
+    openModal(`
+      <div class="modal__tabs">
+        <button data-tab="login" class="${tab==='login'?'active':''}">Вход</button>
+        <button data-tab="register" class="${tab==='register'?'active':''}">Регистрация</button>
+      </div>
+      <div id="authFormWrap"></div>
+      <p class="local-auth-note">Аккаунт работает на разных устройствах. Для входа нужны только логин и пароль. Не используйте в качестве логина телефон, ФИО или электронную почту.</p>`);
+    $$('.modal__tabs button').forEach(b=>
+      b.addEventListener('click',()=>renderCloudAuthForm(b.dataset.tab)));
+    renderCloudAuthForm(tab);
+    return;
+  }
   if(!Shop.customerAccountsEnabled){
     openModal(`
       <div class="modal__tabs">
