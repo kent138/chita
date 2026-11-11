@@ -15,6 +15,8 @@ const State = {
   moderationTimer: null         // таймер polling для панели модерации
 };
 
+const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false };
+
 // -------------------- API-обёртка --------------------
 async function api(path, { method = 'GET', body, admin = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -500,7 +502,9 @@ async function renderProduct(slug) {
           <div class="product__price">${money(p.price)}</div>
           <div class="product__stock" style="color:${inStock?'var(--green)':'var(--hohloma)'}">${inStock?'✓ В наличии ('+p.stock+' шт.)':'Нет в наличии'}</div>
           <div class="product__actions">
-            <span class="v2-purchase-note">Просмотр товара. Заказы доступны на основном сайте.</span>
+            <span class="v2-purchase-note">Оформление заказов станет доступно после настройки магазина.</span>
+            <button class="btn btn--primary" id="addCartBtn" ${inStock?'':'disabled'}>В корзину</button>
+            <button class="btn btn--ghost" id="buyNowBtn" ${inStock?'':'disabled'}>Купить сейчас</button>
             
             <button class="btn btn--ghost card__fav ${State.favorites.includes(p.id)?'active':''}" data-fav="${p.id}" onclick="toggleFav(${p.id})" style="width:auto">♥</button>
           </div>
@@ -523,7 +527,12 @@ async function renderProduct(slug) {
         <div id="reviewsList">
           ${reviews.length?reviews.map(r=>`<div class="review" style="margin-bottom:14px"><div class="review__stars">${'★'.repeat(r.rating)}</div><p class="review__text">${esc(r.text)}</p><div class="review__author">${esc(r.author_name)}</div></div>`).join(''):'<p class="empty">Пока нет отзывов. Будьте первым!</p>'}
         </div>
-        <p class="v2-purchase-note">Отзывы и покупки в тестовой версии отключены.</p>
+        <p class="v2-purchase-note">Отзывы можно будет оставлять после запуска продаж.</p>
+        <form id="reviewForm" class="v2-review-form" style="margin-top:12px">
+          <label>Ваша оценка <select name="rating"><option value="5">5 ★</option><option value="4">4 ★</option><option value="3">3 ★</option><option value="2">2 ★</option><option value="1">1 ★</option></select></label>
+          <div class="form-row"><label>Отзыв о покупке</label><textarea name="text" placeholder="Поделитесь впечатлением" required minlength="5"></textarea></div>
+          <button type="submit" class="btn btn--ghost">Отправить на проверку</button>
+        </form>
       </div>
     </div>`;
 
@@ -535,7 +544,7 @@ async function renderProduct(slug) {
     try {
       await api('/products/' + p.id + '/reviews', { method: 'POST',
         body: { rating: f.get('rating'), text: f.get('text'), name: f.get('name') } });
-      toast('Спасибо за отзыв!', 'success');
+      toast('Отзыв отправлен на проверку!', 'success');
       renderProduct(slug);
     } catch (err) { toast(err.message, 'error'); }
   });
@@ -545,6 +554,7 @@ async function renderProduct(slug) {
 //  СТРАНИЦА: ОФОРМЛЕНИЕ ЗАКАЗА
 // ============================================================
 async function renderCheckout() {
+  if (!Shop.acceptingOrders) { app.innerHTML='<div class="container section"><div class="empty">Оформление заказов пока не включено. Каталог доступен для просмотра.</div></div>'; return; }
   if (State.cart.length === 0) {
     app.innerHTML = `<div class="container section"><div class="empty">Корзина пуста.<br><button class="btn btn--primary" style="margin-top:16px" onclick="navigate('#/catalog')">В каталог</button></div></div>`;
     return;
@@ -570,10 +580,10 @@ async function renderCheckout() {
           </div>
 
           <div class="info-block">
-            <h3>Способ оплаты</h3>
-            <label class="radio-card"><input type="radio" name="payment" value="Карта (Мир)" checked><span><b>Банковская карта «Мир»</b><small>Оплата онлайн</small></span></label>
-            <label class="radio-card"><input type="radio" name="payment" value="СБП"><span><b>СБП</b><small>Система быстрых платежей — по QR-коду</small></span></label>
-            <label class="radio-card"><input type="radio" name="payment" value="Наличные при получении"><span><b>Наличные при получении</b><small>Оплата в пункте выдачи или курьеру</small></span></label>
+            <h3>Оплата</h3>
+            <label class="radio-card"><input type="radio" name="payment" value="При получении" checked><span><b>При получении</b><small>Согласуйте условия оплаты с магазином при подтверждении заказа</small></span></label>
+            <label class="radio-card"><input type="radio" name="payment" value="Согласовать с магазином"><span><b>Согласовать с магазином</b><small>Менеджер свяжется с вами после оформления заказа</small></span></label>
+            <p class="form-hint">Онлайн-оплата картой и СБП пока не подключены. Не отправляйте платёж до подтверждения магазина.</p>
           </div>
 
           <div class="info-block">
@@ -581,6 +591,7 @@ async function renderCheckout() {
             <div class="checkbox-row"><input type="checkbox" name="giftWrap" id="giftWrap"><label for="giftWrap" style="margin:0">🎁 Подарочная упаковка (+150 ₽)</label></div>
             <div class="form-row"><label>Комментарий к заказу</label><textarea name="comment" placeholder="Пожелания по заказу, удобное время доставки…"></textarea></div>
           </div>
+          <label class="checkbox-row consent-row"><input id="orderConsent" type="checkbox" required><span>Согласен(на) на обработку контактных данных для оформления заказа</span></label>
         </form>
 
         <aside class="filters checkout-summary">
@@ -591,7 +602,8 @@ async function renderCheckout() {
             <div class="form-hint" id="promoHint">Попробуйте: СИБИРЬ10, ЧИТА15</div>
           </div>
           <div class="cart-total" style="margin-top:16px"><span>Итого:</span> <b id="checkoutTotal">${money(cartTotal())}</b></div>
-          <button class="btn btn--primary btn--block btn--lg" id="placeOrderBtn">Оформить заказ</button>
+          <p class="form-hint">Стоимость доставки уточняется отдельно до подтверждения заказа.</p>
+          <button class="btn btn--primary btn--block btn--lg" id="placeOrderBtn">Отправить заказ</button>
           <p class="form-hint" style="text-align:center">Нажимая кнопку, вы соглашаетесь с условиями</p>
         </aside>
       </div>
@@ -633,7 +645,15 @@ async function renderCheckout() {
     if (delivery !== 'Самовывоз' && !form.deliveryAddress.value.trim()) {
       return toast('Укажите адрес доставки', 'error');
     }
+    if (!$('#orderConsent').checked) return toast('Подтвердите согласие на обработку данных', 'error');
+    const fingerprint = JSON.stringify(State.cart.map(x=>[x.id,x.quantity]).sort((a,b)=>a[0]-b[0]));
+    let pending = null;
+    try { pending = JSON.parse(sessionStorage.getItem('mtr_v2_pending_order')||'null'); } catch {}
+    if (!pending || pending.fingerprint !== fingerprint) pending = {fingerprint,key:crypto.randomUUID()};
+    sessionStorage.setItem('mtr_v2_pending_order',JSON.stringify(pending));
+    const submitButton = $('#placeOrderBtn'); submitButton.disabled=true;
     const body = {
+      idempotencyKey:pending.key, consent:true,
       customerName: form.customerName.value, customerPhone: form.customerPhone.value,
       deliveryMethod: delivery, deliveryAddress: form.deliveryAddress.value,
       paymentMethod: payment, comment: form.comment.value,
@@ -642,7 +662,7 @@ async function renderCheckout() {
     };
     try {
       const res = await api('/orders', { method: 'POST', body });
-      State.cart = []; saveCart();
+      State.cart = []; saveCart(); sessionStorage.removeItem('mtr_v2_pending_order');
       openModal(`
         <div style="text-align:center">
           <div style="font-size:64px">🎉</div>
@@ -652,6 +672,7 @@ async function renderCheckout() {
           <button class="btn btn--primary btn--lg" style="margin-top:16px" onclick="closeModal();navigate('#/')">На главную</button>
         </div>`);
     } catch (err) { toast(err.message, 'error'); }
+    finally { submitButton.disabled=false; }
   });
 }
 
