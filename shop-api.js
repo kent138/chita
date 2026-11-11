@@ -1,6 +1,7 @@
 'use strict';
 const {ready}=require('./shop-db');
 const auth=require('./shop-auth');
+const cloudAccounts=require('./shop-cloud-accounts');
 const catalog=require('./shop-catalog');
 const orders=require('./shop-orders');
 function sellerReady(){
@@ -34,9 +35,10 @@ function register(app){
       const secretOk=String(process.env.JWT_SECRET||'').length>=32;
       const adminOk=String(process.env.ADMIN_PASSWORD||'').length>=12;
       const readyForOrders=ordersEnabled();
+      const cloudAccountsEnabled=cloudAccounts.open() && await cloudAccounts.ready().then(()=>true).catch(()=>false);
       res.set('Cache-Control','no-store');
       res.json({version:'2.1',databaseReady:true,acceptingOrders:readyForOrders,
-        adminConfigured:adminOk && secretOk,customerAccountsEnabled:personalDataEnabled(),sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
+        adminConfigured:adminOk && secretOk,customerAccountsEnabled:personalDataEnabled(),cloudAccountsEnabled,sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
         paymentsOnline:false,shippingPrice:'Уточняется магазином при подтверждении'});
     }catch(e){
       console.error('[SHOP-BOOT]',e.message);
@@ -66,6 +68,7 @@ function register(app){
     if(!personalDataEnabled())return noPersonalData(req,res);
     next();
   });
+  cloudAccounts.register(app);
   auth.register(app);
   catalog.register(app);
   app.post('/api/orders',(req,res,next)=>{
