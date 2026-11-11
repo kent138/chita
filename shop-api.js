@@ -3,6 +3,16 @@ const {ready}=require('./shop-db');
 const auth=require('./shop-auth');
 const catalog=require('./shop-catalog');
 const orders=require('./shop-orders');
+function sellerReady(){
+  const name=String(process.env.SELLER_LEGAL_NAME||'').trim();
+  const ogrn=String(process.env.SELLER_OGRN||'').replace(/\D/g,'');
+  const address=String(process.env.SELLER_LEGAL_ADDRESS||'').trim();
+  const contact=String(process.env.SELLER_CONTACT||'').trim();
+  return name.length>5 && [13,15].includes(ogrn.length) && address.length>10 && contact.length>5;
+}
+function ordersEnabled(){
+  return process.env.SHOP_OPEN==='1' && String(process.env.JWT_SECRET||'').length>=32 && sellerReady();
+}
 function register(app){
   app.use('/api',(req,res,next)=>{
     if(['POST','PUT','PATCH','DELETE'].includes(req.method)){
@@ -36,7 +46,7 @@ function register(app){
   auth.register(app);
   catalog.register(app);
   app.post('/api/orders',(req,res,next)=>{
-    if(process.env.SHOP_OPEN!=='1')return res.status(503).json({error:'Приём заказов ещё не включён'});
+    if(!ordersEnabled())return res.status(503).json({error:'Приём заказов ещё не включён: проверьте данные продавца, базу и настройки запуска'});
     next();
   });
   orders.register(app);
