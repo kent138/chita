@@ -405,27 +405,26 @@ async function renderHome() {
 // ============================================================
 let catalogFacets = null;
 async function renderCatalog(_m, params) {
-  if (!catalogFacets) catalogFacets = await api('/products/facets');
   const preCat = params.get('category') || '';
+  const preSearch = params.get('search') || '';
+  const known = catalogFacets || { categories: [], materials: [] };
   app.innerHTML = `
     <div class="container page-head">
       <div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Каталог</div>
       <h1>Каталог</h1>
-      <p style="color:var(--ink-soft)">Товары ручной работы из Читы</p>
+      <p style="color:var(--ink-soft)">Ткани и материалы в наличии · быстрая загрузка</p>
     </div>
     <div class="container section" style="padding-top:20px">
-      <div class="catalog">
+      <div class="catalog" id="catalogRoot">
         <aside class="filters">
           <h3>Фильтры</h3>
           <div class="filter-group">
             <h4>Категория</h4>
-            <label><input type="radio" name="category" value="" ${!preCat?'checked':''}> Все</label>
-            ${catalogFacets.categories.map(c=>`<label><input type="radio" name="category" value="${esc(c)}" ${preCat===c?'checked':''}> ${esc(c)}</label>`).join('')}
+            <div id="catCategories"></div>
           </div>
           <div class="filter-group">
             <h4>Состав</h4>
-            <label><input type="radio" name="material" value="" checked> Любой</label>
-            ${catalogFacets.materials.map(m=>`<label><input type="radio" name="material" value="${esc(m)}"> ${esc(m)}</label>`).join('')}
+            <div id="catMaterials"></div>
           </div>
           <div class="filter-group">
             <h4>Цена, ₽</h4>
@@ -443,30 +442,93 @@ async function renderCatalog(_m, params) {
         </aside>
         <div>
           <div class="catalog__head">
-            <span class="catalog__count" id="catCount"></span>
+            <span class="catalog__count" id="catCount">Загружаем товары…</span>
           </div>
           <div class="products-grid" id="catGrid"></div>
+          <div id="catFeedback" class="catalog-feedback" role="status">Получаем товары…</div>
+          <div class="catalog-more">
+            <button class="btn btn--ghost btn--lg" id="catMore" hidden>Показать ещё</button>
+          </div>
         </div>
       </div>
     </div>`;
 
-  async function load() {
+  const root = $('#catalogRoot');
+  let page = 0, total = 0, sequence = 0;
+  const PAGE_SIZE = 24;
+
+  function updateFacets(facets) {
+    const category = root.querySelector('input[name="category"]:checked')?.value ?? preCat;
+    const material = root.querySelector('input[name="material"]:checked')?.value ?? '';
+    root.querySelector('#catCategories').innerHTML =
+      `<label><input type="radio" name="category" value="" ${category ? '' : 'checked'}> Все</label>` +
+      facets.categories.map(x => `<label><input type="radio" name="category" value="${esc(x)}" ${category===x?'checked':''}> ${esc(x)}</label>`).join('');
+    root.querySelector('#catMaterials').innerHTML =
+      `<label><input type="radio" name="material" value="" ${material ? '' : 'checked'}> Любой</label>` +
+      facets.materials.map(x => `<label><input type="radio" name="material" value="${esc(x)}" ${material===x?'checked':''}> ${esc(x)}</label>`).join('');
+  }
+
+  updateFacets(known);
+
+  async function load(more = false) {
+    const n = ++sequence;
+    const targetPage = more ? page + 1 : 1;
     const q = new URLSearchParams();
-    const cat = $('input[name="category"]:checked')?.value;
-    const mat = $('input[name="material"]:checked')?.value;
+    const cat = root.querySelector('input[name="category"]:checked')?.value || (!catalogFacets ? preCat : '');
+    const mat = root.querySelector('input[name="material"]:checked')?.value || '';
     if (cat) q.set('category', cat);
     if (mat) q.set('material', mat);
     if ($('#minPrice').value) q.set('minPrice', $('#minPrice').value);
     if ($('#maxPrice').value) q.set('maxPrice', $('#maxPrice').value);
     if ($('#inStock').checked) q.set('inStock', '1');
-    const list = await api('/products?' + q.toString());
-    $('#catCount').textContent = 'Найдено товаров: ' + list.length;
-    $('#catGrid').innerHTML = list.length ? list.map(productCard).join('') : '<div class="empty">По вашему запросу ничего не найдено.</div>';
+    if (preSearch) q.set('search', preSearch);
+    q.set('limit', PAGE_SIZE);
+    q.set('page', targetPage);
+    root.querySelector('#catFeedback').textContent = 'Загружаем товары…';
+    root.querySelector('#catMore').hidden = true;
+    if (!more) root.querySelector('#catGrid').innerHTML =
+      '<div class="catalog-skeleton"></div><div class="catalog-skeleton"></div><div class="catalog-skeleton"></div>';
+    try {
+      const result = await api('/products?' + q.toString());
+      if (n !== sequence || !root.isConnected) return;
+      const items = result.items || [];
+      total = result.total || 0;
+      page = targetPage;
+      root.querySelector('#catCount').textContent = 'Найдено товаров: ' + total;
+      if (more) root.querySelector('#catGrid').insertAdjacentHTML('beforeend', items.map(productCard).join(''));
+      else root.querySelector('#catGrid').innerHTML = items.length
+        ? items.map(productCard).join('')
+        : '<div class="empty">По вашему запросу ничего не найдено.</div>';
+      root.querySelector('#catFeedback').textContent = '';
+      root.querySelector('#catMore').hidden = page * PAGE_SIZE >= total;
+    } catch (err) {
+      if (n !== sequence || !root.isConnected) return;
+      root.querySelector('#catFeedback').textContent = 'Не удалось загрузить каталог: ' + err.message;
+      root.querySelector('#catMore').hidden = false;
+      root.querySelector('#catMore').textContent = 'Повторить';
+    }
   }
-  $('#applyFilters').addEventListener('click', load);
-  $('#resetFilters').addEventListener('click', () => { navigate('#/catalog'); renderCatalog(_m, new URLSearchParams()); });
-  $$('input[name="category"], input[name="material"]').forEach(r => r.addEventListener('change', load));
+
+  root.querySelector('#applyFilters').addEventListener('click', () => load());
+  root.querySelector('#catCategories').addEventListener('change', () => load());
+  root.querySelector('#catMaterials').addEventListener('change', () => load());
+  root.querySelector('#catMore').addEventListener('click', () => load(page > 0));
+  root.querySelector('#resetFilters').addEventListener('click', () => {
+    root.querySelectorAll('input[name="category"][value=""], input[name="material"][value=""]').forEach(i => i.checked = true);
+    root.querySelector('#minPrice').value = '';
+    root.querySelector('#maxPrice').value = '';
+    root.querySelector('#inStock').checked = false;
+    load();
+  });
   load();
+  if (!catalogFacets) {
+    api('/products/facets').then(facets => {
+      catalogFacets = facets;
+      if (root.isConnected) updateFacets(facets);
+    }).catch(err => {
+      console.warn('Фильтры временно недоступны:', err.message);
+    });
+  }
 }
 
 // ============================================================
