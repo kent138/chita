@@ -14,6 +14,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 require('./v2-api')(app);
+require('./v2-import')(app);
 
 const disabled = (req, res) => res.status(503).json({
   error: 'Это отдельная тестовая версия магазина. Оформление заказов и личные кабинеты пока отключены. Используйте основной сайт.',
