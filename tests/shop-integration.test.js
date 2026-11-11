@@ -80,6 +80,14 @@ if(!process.env.TEST_DATABASE_URL){
     adminCookie=auth.cookie.split(';')[0];
     const ok=await ask('/api/admin/verify',{method:'POST',headers:{Cookie:adminCookie}});
     assert.equal(ok.status,200);
+    const list=await ask('/api/admin/products?limit=50&page=1',{headers:{Cookie:adminCookie}});
+    assert.equal(list.status,200);
+    assert.equal(list.body.total,500);
+    assert.equal(list.body.items.length,50);
+    assert.equal(list.body.pages,10);
+    const found=await ask('/api/admin/products?search='+encodeURIComponent('Ткань 250')+'&limit=50',{headers:{Cookie:adminCookie}});
+    assert.equal(found.status,200);
+    assert.equal(found.body.total,1);
     const product=await ask('/api/admin/products/1',{method:'PUT',headers:{Cookie:adminCookie},
       body:JSON.stringify({stock:2})});
     assert.equal(product.body.stock,2);
