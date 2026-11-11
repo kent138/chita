@@ -310,6 +310,7 @@ function toggleFav(id) {
   if (State.favorites.includes(id)) State.favorites = State.favorites.filter(f => f !== id);
   else State.favorites.push(id);
   saveFav();
+  toast(State.favorites.includes(id)?'Добавлено в избранное':'Удалено из избранного');
   $$('.card__fav[data-fav="' + id + '"]').forEach(b=>{
     const active=State.favorites.includes(id);
     b.classList.toggle('active',active);
@@ -903,6 +904,7 @@ function renderPrivacy() {
 async function renderAccount(_m, params) {
   const signedIn=!!State.token&&Shop.customerAccountsEnabled;
   const tab=params.get('tab')||(signedIn?'orders':'fav');
+  if(!signedIn&&!['fav','cart'].includes(tab)){navigate('#/account?tab=fav');return;}
   app.innerHTML = `
     <div class="container page-head">
       <h1>${signedIn?'Личный кабинет':'Мой профиль'}</h1>
@@ -1396,7 +1398,17 @@ async function initializeShop(){
     }
     renderAuthUI();
     if(Shop.customerAccountsEnabled&&State.token){
-      try{const me=await api('/auth/me');State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));}
+      try{
+        const me=await api('/auth/me');
+        State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));
+        const remote=Array.isArray(me.favorites)?me.favorites.map(Number):[];
+        const merged=[...new Set([...remote,...State.favorites])];
+        if(merged.length!==State.favorites.length || merged.some(x=>!State.favorites.includes(x))){
+          State.favorites=merged;localStorage.setItem('mtr_fav',JSON.stringify(merged));
+          updateFavBadge();
+        }
+        if(merged.some(id=>!remote.includes(id)))saveFav();
+      }
       catch{State.token=null;State.user=null;localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');}
       renderAuthUI();
     }
