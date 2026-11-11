@@ -15,7 +15,7 @@ const State = {
   moderationTimer: null         // таймер polling для панели модерации
 };
 
-const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false };
+const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, seller:null };
 
 // -------------------- API-обёртка --------------------
 async function api(path, { method = 'GET', body, admin = false } = {}) {
@@ -130,7 +130,7 @@ function renderAuthForm(tab) {
         <div class="form-row"><label>Повторите пароль</label><input name="passwordRepeat" type="password" required></div>
         <label class="checkbox-row consent-row">
           <input type="checkbox" name="consent" id="regConsent" required>
-          <span>Я согласен(а) на <a href="#/returns" data-link onclick="closeModal()">обработку персональных данных</a></span>
+          <span>Я согласен(а) на <a href="#/privacy" data-link onclick="closeModal()">обработку персональных данных</a></span>
         </label>
         <button class="btn btn--primary btn--block btn--lg" type="submit">Зарегистрироваться</button>
       </form>`;
@@ -305,6 +305,7 @@ const routes = [
   { re: /^\/sale$/,             render: renderSale },
   { re: /^\/b2b$/,              render: renderB2B },
   { re: /^\/returns$/,          render: renderReturns },
+  { re: /^\/privacy$/,          render: renderPrivacy },
   { re: /^\/account$/,          render: renderAccount }
 ];
 
@@ -656,6 +657,24 @@ async function renderCheckout() {
     } catch (err) { toast(err.message, 'error'); }
     finally { submitButton.disabled=false; }
   });
+}
+
+function renderPrivacy() {
+  const seller=Shop.seller;
+  const name=seller?.name||'Данные продавца не заполнены';
+  const address=seller?.address||'Юридический адрес не заполнен';
+  const contact=seller?.contact||'Контакт для обращений не заполнен';
+  const ogrn=seller?.ogrn||'ОГРН / ОГРНИП не указан';
+  app.innerHTML='<div class="container page-head"><h1>Обработка персональных данных</h1></div>'+
+    '<div class="container section"><div class="info-block" style="max-width:860px">'+
+    (!seller?'<p class="form-error">Магазин готовится к запуску. Реквизиты продавца ещё не заполнены, регистрация и оформление заказов отключены.</p>':'')+
+    '<h3>Сведения об операторе</h3><p>'+esc(name)+' · '+esc(ogrn)+'</p><p>'+esc(address)+'</p>'+
+    '<p>Контакт по вопросам обработки данных: '+esc(contact)+'</p>'+
+    '<h3>Какие сведения собираются</h3><p>При оформлении заказа: имя, телефон, адрес доставки, состав заказа, комментарий. При регистрации: имя, телефон, защищённый хеш пароля, избранное и история заказов.</p>'+
+    '<h3>Цели использования</h3><p>Создание личного кабинета, оформление и сопровождение заказов, связь по вопросам доставки и исполнения обязательств. Данные не публикуются в каталоге.</p>'+
+    '<h3>Обращения и удаление данных</h3><p>Для запроса доступа, исправления или удаления данных обратитесь к оператору по указанному контакту. Данные, которые требуется хранить по закону, могут сохраняться в установленные законом сроки.</p>'+
+    '<h3>Важная информация</h3><p>Перед запуском продаж оператор должен утвердить полную политику и проверить соответствие хранения и обработки данных применимому законодательству.</p>'+
+    '</div></div>';
 }
 
 // ============================================================
@@ -1181,6 +1200,7 @@ async function initializeShop(){
     Shop.databaseReady=!!cfg.databaseReady;
     Shop.acceptingOrders=!!cfg.acceptingOrders;
     Shop.adminConfigured=!!cfg.adminConfigured;
+    Shop.seller=cfg.seller||null;
     document.body.classList.toggle('v2-preview',!Shop.databaseReady);
     $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
     $('#shopNoticeText').textContent=Shop.acceptingOrders
