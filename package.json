@@ -3,20 +3,21 @@
   "version": "1.0.0",
   "description": "Интернет-магазин мануфактуры «Матрёшка», Чита",
   "type": "commonjs",
-  "main": "server.js",
+  "main": "server-v2.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server-v2.js",
     "seed": "node database.js"
   },
   "author": "Мануфактура Матрёшка",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
     "bcryptjs": "^2.4.3",
     "express": "^4.21.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "@vercel/blob": "^2.9.0"
   }
 }
