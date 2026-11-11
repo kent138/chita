@@ -151,4 +151,39 @@ if(!process.env.TEST_DATABASE_URL){
     assert.equal(message.status,200);
     assert.ok((await ask('/api/admin/requests',{headers:{Cookie:adminCookie}})).body.length>0);
   });
+  test('three invalid admin passwords cause escalating persistent 1/3/9 minute locks',async()=>{
+    const login=async(password)=>ask('/api/admin/login',{
+      method:'POST',body:JSON.stringify({password})});
+    // Successful admin login in prior tests cleared any earlier lock history.
+    let responses=[];
+    for(let i=0;i<3;i++) responses.push(await login('incorrect-admin-attempt'));
+    assert.deepEqual(responses.map(x=>x.status),[401,401,429]);
+    assert.equal(responses[0].body.attemptsLeft,2);
+    assert.equal(responses[1].body.attemptsLeft,1);
+    assert.equal(responses[2].body.retryAfterSeconds,60);
+    assert.equal(responses[2].body.lockLevel,1);
+    assert.equal((await login(process.env.ADMIN_PASSWORD)).status,429);
+    let table=await pool.query('SELECT lock_level,failed_count FROM shop_admin_attempts');
+    assert.equal(table.rows[0].lock_level,1);
+    assert.equal(table.rows[0].failed_count,0);
+    // Travel forward in database time, without slowing tests down.
+    await pool.query("UPDATE shop_admin_attempts SET locked_until=now()-interval '2 seconds'");
+    responses=[];
+    for(let i=0;i<3;i++)responses.push(await login('incorrect-admin-attempt'));
+    assert.deepEqual(responses.map(x=>x.status),[401,401,429]);
+    assert.equal(responses[2].body.retryAfterSeconds,180);
+    assert.equal(responses[2].body.lockLevel,2);
+    await pool.query("UPDATE shop_admin_attempts SET locked_until=now()-interval '2 seconds'");
+    responses=await Promise.all(Array.from({length:3},()=>login('incorrect-admin-attempt')));
+    assert.deepEqual(responses.map(x=>x.status).sort((a,b)=>a-b),[401,401,429]);
+    assert.equal(responses.find(x=>x.status===429).body.retryAfterSeconds,540);
+    assert.equal(responses.find(x=>x.status===429).body.lockLevel,3);
+    const state=(await pool.query('SELECT lock_level,failed_count FROM shop_admin_attempts')).rows[0];
+    assert.equal(state.lock_level,3);
+    assert.equal(state.failed_count,0);
+    await pool.query("UPDATE shop_admin_attempts SET locked_until=now()-interval '2 seconds'");
+    assert.equal((await login(process.env.ADMIN_PASSWORD)).status,200);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM shop_admin_attempts')).rows[0].n,0);
+  });
+
 }
