@@ -1,0 +1,12 @@
+Options -Indexes
+<IfModule mod_rewrite.c>
+RewriteEngine On
+# The endpoint must never accept passwords over unencrypted HTTP.
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+# Apache/FastCGI deployments may otherwise strip Authorization.
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+<FilesMatch "^(\.ht|config|schema)">
+Require all denied
+</FilesMatch>
