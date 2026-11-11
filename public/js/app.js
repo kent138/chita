@@ -719,7 +719,7 @@ function renderContacts() {
           <h2>Магазин тканей «Матрёшка»</h2>
           <h3>📍 Адрес</h3><p>г. Чита, ул. Бутина, 44, помещение 1</p>
           <h3>📞 Телефон</h3><p><a href="tel:+79143592767" style="color:var(--terra);font-weight:700;font-size:20px">+7 914 359-27-67</a></p>
-          <p>Уточните по телефону наличие, цены, режим работы и возможность самовывоза. В тестовой версии оформление заказа пока отключено.</p>
+          <p>Уточните по телефону наличие, цены, режим работы и возможность самовывоза. Оформление заказов через сайт пока отключено.</p>
           <p><a class="btn btn--primary" href="#/catalog">Открыть каталог</a></p>
         </div>
         <div class="map-embed">
@@ -1297,12 +1297,6 @@ async function initializeShop(){
     Shop.customerAccountsEnabled=!!cfg.customerAccountsEnabled;
     Shop.seller=cfg.seller||null;
     document.body.classList.toggle('v2-preview',!Shop.acceptingOrders);
-    $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
-    $('#shopNoticeText').textContent=Shop.acceptingOrders
-      ?'Каталог и оформление заказов работают. Оплата согласуется с магазином.'
-      :Shop.databaseReady
-        ?'База товаров подключена. Админ-панель доступна после входа. Регистрация покупателей и заказы пока выключены.'
-        :'Каталог работает. Оформление заказов включим после подключения отдельной базы данных.';
     const adminReady=Shop.databaseReady&&Shop.adminConfigured;
     $('#menuEditCatalog').hidden=false;
     $('#menuEditCatalog').textContent=adminReady?'✎ Редактировать каталог':'👁 Просмотр товаров';
