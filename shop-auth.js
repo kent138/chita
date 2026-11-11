@@ -23,8 +23,14 @@ function clearCookie(res,name){res.clearCookie(name,{httpOnly:true,secure:proces
 function issueUser(res,user){
   setCookie(res,USER_COOKIE,jwt.sign({id:Number(user.id),kind:'user'},secret(),{expiresIn:'14d'}),14*86400*1000);
 }
+function adminSessionSecret(){
+  // Changing ADMIN_PASSWORD revokes all previously issued administrator cookies.
+  return crypto.createHmac('sha256',secret())
+    .update('matreshka-v2-admin:'+String(process.env.ADMIN_PASSWORD||''))
+    .digest('hex');
+}
 function issueAdmin(res){
-  setCookie(res,ADMIN_COOKIE,jwt.sign({kind:'admin'},secret(),{expiresIn:'2h'}),2*3600*1000);
+  setCookie(res,ADMIN_COOKIE,jwt.sign({kind:'admin'},adminSessionSecret(),{expiresIn:'2h'}),2*3600*1000);
 }
 function decodeUser(req){
   let cookie=cookieValue(req,USER_COOKIE);
@@ -34,7 +40,7 @@ function decodeUser(req){
 function decodeAdmin(req){
   let cookie=cookieValue(req,ADMIN_COOKIE);
   if(!cookie)return false;
-  try {return jwt.verify(cookie,secret()).kind==='admin';} catch {return false;}
+  try {return jwt.verify(cookie,adminSessionSecret()).kind==='admin';} catch {return false;}
 }
 function userAuth(req,res,next){
   const id=decodeUser(req);
