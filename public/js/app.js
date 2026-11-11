@@ -12,11 +12,15 @@ function storedJSON(key,fallback){
     return raw===null?fallback:raw;
   } catch { return fallback; }
 }
-const storedCart=storedJSON('mtr_cart',[]);
-const storedLikes=storedJSON('mtr_fav',[]);
+// Device-local accounts never issue server tokens or send passwords online.
+const currentLocalUser=window.LocalAccounts?.current()||null;
+const currentLocalKeys=currentLocalUser?window.LocalAccounts.keys(currentLocalUser):null;
+const storedCart=storedJSON(currentLocalKeys?.cart||'mtr_cart',[]);
+const storedLikes=storedJSON(currentLocalKeys?.favorites||'mtr_fav',[]);
 const State = {
   token: localStorage.getItem('mtr_token') || null,
   user: storedJSON('mtr_user',null),
+  localUser:currentLocalUser,
   cart: Array.isArray(storedCart)?storedCart.filter(i=>i&&Number.isSafeInteger(i.id)&&i.id>0&&Number.isFinite(Number(i.price))&&Number(i.price)>=0&&Number.isSafeInteger(i.quantity)&&i.quantity>0).slice(0,150):[],
   favorites: Array.isArray(storedLikes)?[...new Set(storedLikes.map(Number).filter(id=>Number.isSafeInteger(id)&&id>0))].slice(0,1000):[],
   adminPassword: null,          // старое значение больше не используется: вход через защищённую cookie
@@ -68,12 +72,17 @@ function toast(msg, type = '') {
   setTimeout(() => el.remove(), 3000);
 }
 
+function localStorageKeys(){
+  return State.localUser&&window.LocalAccounts
+    ?window.LocalAccounts.keys(State.localUser)
+    :{cart:'mtr_cart',favorites:'mtr_fav'};
+}
 function saveCart() {
-  localStorage.setItem('mtr_cart', JSON.stringify(State.cart));
+  localStorage.setItem(localStorageKeys().cart,JSON.stringify(State.cart));
   updateCartBadge();
 }
 function saveFav() {
-  localStorage.setItem('mtr_fav', JSON.stringify(State.favorites));
+  localStorage.setItem(localStorageKeys().favorites,JSON.stringify(State.favorites));
   updateFavBadge();
   if (State.token && Shop.customerAccountsEnabled)
     api('/auth/favorites',{method:'PUT',body:{favorites:State.favorites}})
