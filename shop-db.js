@@ -18,6 +18,7 @@ const ddl = [
   "CREATE TABLE IF NOT EXISTS shop_reviews (id BIGSERIAL PRIMARY KEY, product_id BIGINT NOT NULL REFERENCES shop_products(id) ON DELETE CASCADE, user_id BIGINT REFERENCES shop_users(id) ON DELETE SET NULL, author_name VARCHAR(120) NOT NULL, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5), text TEXT NOT NULL DEFAULT '', approved BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT now())",
   "CREATE TABLE IF NOT EXISTS shop_requests (id BIGSERIAL PRIMARY KEY, type VARCHAR(40) NOT NULL, company TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', phone VARCHAR(24) NOT NULL DEFAULT '', email VARCHAR(255) NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now())",
   "CREATE TABLE IF NOT EXISTS shop_auth_attempts (id VARCHAR(64) PRIMARY KEY, failed_count INTEGER NOT NULL DEFAULT 0, locked_until TIMESTAMPTZ, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())",
+  "CREATE TABLE IF NOT EXISTS shop_admin_attempts (id VARCHAR(64) PRIMARY KEY, failed_count INTEGER NOT NULL DEFAULT 0, lock_level INTEGER NOT NULL DEFAULT 0, locked_until TIMESTAMPTZ, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())",
   "CREATE INDEX IF NOT EXISTS shop_products_category_idx ON shop_products (active,category,id DESC)",
   "CREATE INDEX IF NOT EXISTS shop_products_material_idx ON shop_products (active,material,id DESC)",
   "CREATE INDEX IF NOT EXISTS shop_products_price_idx ON shop_products (active,price)",
