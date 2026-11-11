@@ -60,6 +60,73 @@ async function failed(id){
   await pool.query("INSERT INTO shop_auth_attempts (id,failed_count,locked_until,updated_at) VALUES ($1,1,NULL,now()) ON CONFLICT(id) DO UPDATE SET failed_count=CASE WHEN shop_auth_attempts.updated_at<now()-interval '15 minutes' THEN 1 ELSE shop_auth_attempts.failed_count+1 END,locked_until=CASE WHEN shop_auth_attempts.failed_count>=4 AND shop_auth_attempts.updated_at>=now()-interval '15 minutes' THEN now()+interval '15 minutes' ELSE NULL END,updated_at=now()",[id]);
 }
 async function succeeded(id){await pool.query('DELETE FROM shop_auth_attempts WHERE id=$1',[id]);}
+
+/**
+ * Admin attempts are keyed by the requester's IP (hashed with the server secret).
+ * PostgreSQL advisory transaction locks serialize concurrent attempts across instances.
+ * Three incorrect attempts trigger 1, 3, 9, 27... minute bans.
+ * A successful login resets the sequence. Attempts while locked do not count.
+ * Duration is capped at 30 days to avoid permanent lockouts or timestamp overflow.
+ */
+const ADMIN_MAX_LOCK_MINUTES=43200;
+function adminLockMinutes(level){
+  return Math.min(ADMIN_MAX_LOCK_MINUTES,Math.pow(3,Math.max(0,level-1)));
+}
+async function recordAdminAttempt(id,correct){
+  const client=await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(20261111,hashtext($1))',[id]);
+    const result=await client.query(
+      'SELECT failed_count,lock_level,locked_until FROM shop_admin_attempts WHERE id=$1 FOR UPDATE',[id]);
+    const previous=result.rows[0];
+    const now=Date.now();
+    if(previous?.locked_until){
+      const left=Math.ceil((new Date(previous.locked_until).getTime()-now)/1000);
+      if(left>0){
+        await client.query('COMMIT');
+        return {locked:true,retryAfterSeconds:left,lockLevel:previous.lock_level};
+      }
+    }
+    if(correct){
+      await client.query('DELETE FROM shop_admin_attempts WHERE id=$1',[id]);
+      await client.query('COMMIT');
+      return {ok:true};
+    }
+    let errors=(previous?.failed_count||0)+1,level=previous?.lock_level||0;
+    let retryAfterSeconds=0;
+    let until=null;
+    if(errors>=3){
+      errors=0;
+      level+=1;
+      const duration=adminLockMinutes(level);
+      until=new Date(now+duration*60*1000);
+      retryAfterSeconds=duration*60;
+    }
+    await client.query(
+      'INSERT INTO shop_admin_attempts (id,failed_count,lock_level,locked_until,updated_at) '+
+      'VALUES ($1,$2,$3,$4,now()) ON CONFLICT(id) DO UPDATE '+
+      'SET failed_count=EXCLUDED.failed_count,lock_level=EXCLUDED.lock_level,'+
+      'locked_until=EXCLUDED.locked_until,updated_at=now()',
+      [id,errors,level,until]);
+    await client.query('COMMIT');
+    return retryAfterSeconds?{locked:true,retryAfterSeconds,lockLevel:level}:{locked:false,attemptsLeft:3-errors};
+  }catch(e){
+    try{await client.query('ROLLBACK');}catch{}
+    throw e;
+  }finally{client.release();}
+}
+function replyLocked(res,result){
+  const seconds=Math.max(1,Math.ceil(result.retryAfterSeconds));
+  res.setHeader('Retry-After',String(seconds));
+  const display=seconds<3600?Math.ceil(seconds/60)+' мин.':Math.ceil(seconds/3600)+' ч.';
+  return res.status(429).json({
+    error:'Админ-панель временно заблокирована. Повторите попытку через '+display,
+    retryAfterSeconds:seconds,
+    lockLevel:result.lockLevel
+  });
+}
+
 function register(app){
   app.post('/api/auth/register',wrap(async(req,res)=>{
     const b=req.body||{},name=safeText(b.name),phone=normPhone(b.phone),pwd=String(b.password||'');
@@ -104,13 +171,17 @@ function register(app){
   app.post('/api/admin/login',wrap(async(req,res)=>{
     const expected=String(process.env.ADMIN_PASSWORD||'');
     if(expected.length<12)throw error('Пароль администратора должен содержать минимум 12 символов. Обновите ADMIN_PASSWORD в Vercel.',503);
-    const key=clientId(req,'admin');await checkRate(key);
+    const key=clientId(req,'admin');
     const actual=String(req.body?.password||'');
     const a=Buffer.from(expected),b=Buffer.from(actual);
-    if(a.length!==b.length||!crypto.timingSafeEqual(a,b)){
-      await failed(key);throw error('Неверный пароль',401);
-    }
-    await succeeded(key);issueAdmin(res);res.json({ok:true});
+    const matches=a.length===b.length&&crypto.timingSafeEqual(a,b);
+    const result=await recordAdminAttempt(key,matches);
+    if(result.locked)return replyLocked(res,result);
+    if(!matches)return res.status(401).json({
+      error:'Неверный пароль. Осталось попыток: '+result.attemptsLeft,
+      attemptsLeft:result.attemptsLeft
+    });
+    issueAdmin(res);res.json({ok:true});
   }));
   app.post('/api/admin/verify',adminAuth,(req,res)=>res.json({ok:true}));
   app.post('/api/admin/logout',adminAuth,(req,res)=>{clearCookie(res,ADMIN_COOKIE);res.json({ok:true});});
