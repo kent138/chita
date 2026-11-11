@@ -135,46 +135,4 @@ module.exports=function(app){
     await saveCatalog(list.filter(p=>p.id!==id),etag);res.json({ok:true});
   }));
 
-  // One-time migration: public product catalog from original store only.
-  app.post('/api/v2/import-batch',asyncRoute(async(req,res)=>{
-    if(process.env.V2_IMPORT_ENABLED!=='1') return res.status(403).json({error:'Импорт отключён'});
-    try { await head(KEY); return res.status(409).json({error:'Каталог уже существует'}); }
-    catch(e){ if(!notFound(e)) throw e; }
-    const start=Math.floor(Number(req.query.start));
-    const count=Math.floor(Number(req.query.count));
-    if(!Number.isInteger(start)||start<0||start>10000||!Number.isInteger(count)||count<1||count>4)
-      return res.status(400).json({error:'Некорректные параметры импорта'});
-    const response=await fetch(OLD_URL,{signal:AbortSignal.timeout(25000)});
-    if(!response.ok)throw new Error('Не удалось прочитать старый каталог: '+response.status);
-    const source=await response.json();
-    if(!Array.isArray(source))throw new Error('Каталог источника повреждён');
-    const selected=source.slice(start,start+count);
-    for(const p of selected) p.images=await uploadImages(p.images||[],p.id);
-    await put('v2/staging/batch-'+start+'.json',JSON.stringify(selected),{
-      access:'public',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'
-    });
-    res.json({done:selected.length,start,total:source.length,next:start+selected.length});
-  }));
-  app.post('/api/v2/import-finalize',asyncRoute(async(req,res)=>{
-    if(process.env.V2_IMPORT_ENABLED!=='1')return res.status(403).json({error:'Импорт отключён'});
-    try { await head(KEY);return res.status(409).json({error:'Каталог уже существует'}); }
-    catch(e){if(!notFound(e)) throw e;}
-    const total=Math.floor(Number(req.query.total)),step=Number(req.query.step);
-    if(!Number.isInteger(total)||total<1||total>10000||step!==4) return res.status(400).json({error:'Некорректные параметры'});
-    const items=[];
-    for(let i=0;i<total;i+=step) {
-      const stage=await readBlob('v2/staging/batch-'+i+'.json');
-      items.push(...stage);
-    }
-    if(items.length!==total||new Set(items.map(p=>p.id)).size!==total ||
-      items.some(p=>(p.images||[]).some(i=>typeof i!=='string'||i.startsWith('data:'))))
-      return res.status(422).json({error:'Неполный перенос товаров или фотографий'});
-    await put(KEY,JSON.stringify(items),{
-      access:'public',addRandomSuffix:false,contentType:'application/json',cacheControlMaxAge:60
-    });
-    cached=null;
-    res.json({imported:items.length,photos:items.reduce((n,p)=>n+(p.images||[]).length,0)});
-  }));
-
-
 };
