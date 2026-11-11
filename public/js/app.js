@@ -176,6 +176,91 @@ function authModal(tab = 'login') {
 }
 
 // Local accounts: credentials are never sent to a server.
+function renderCloudAuthForm(tab){
+  $$('.modal__tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  const wrap=$('#authFormWrap');
+  const isRegister=tab==='register';
+  wrap.innerHTML=`
+    <h2>${isRegister?'Создать аккаунт':'С возвращением!'}</h2>
+    <p class="local-auth-subtitle">${isRegister?'Аккаунт сохранит корзину и лайки на всех ваших устройствах.':'Войдите, чтобы увидеть сохранённые товары и избранное.'}</p>
+    <div class="form-error" id="authErr" hidden></div>
+    <form id="cloudAuthForm">
+      <div class="form-row"><label>Логин</label><input name="username" minlength="3" maxlength="32" autocomplete="username" autocapitalize="off" placeholder="Например, fabriclover23" required></div>
+      <div class="form-row"><label>Пароль</label><input name="password" type="password" minlength="${isRegister?10:1}" maxlength="128" autocomplete="${isRegister?'new-password':'current-password'}" required></div>
+      ${isRegister?'<div class="form-row"><label>Повторите пароль</label><input name="passwordRepeat" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></div><label class="checkbox-row consent-row"><input name="consent" type="checkbox" required><span>Принимаю <a href="#/privacy" data-link onclick="closeModal()">условия обработки данных аккаунта</a></span></label>':''}
+      <button class="btn btn--primary btn--block btn--lg" type="submit">${isRegister?'Зарегистрироваться':'Войти'}</button>
+    </form>`;
+  $('#cloudAuthForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const button=e.target.querySelector('[type="submit"]');
+    const f=new FormData(e.target);
+    if(isRegister&&f.get('password')!==f.get('passwordRepeat'))
+      return showAuthErr('Пароли не совпадают');
+    button.disabled=true;
+    try{
+      const body={username:f.get('username'),password:f.get('password')};
+      if(isRegister)body.passwordRepeat=f.get('passwordRepeat');
+      const data=await api('/cloud-auth/'+(isRegister?'register':'login'),{method:'POST',body});
+      await activateCloudProfile(data.user,true);
+      closeModal();
+      renderAuthUI();
+      toast('Добро пожаловать! Корзина и избранное синхронизированы.','success');
+      navigate('#/account?tab=fav');router();
+    }catch(err){showAuthErr(err.message);}
+    finally{button.disabled=false;}
+  });
+}
+// Get current product descriptions from the merchandise catalogue. Account
+// storage contains only product IDs and quantities; prices are NEVER trusted.
+async function productsForCloudCart(remote){
+  const needed=new Set(remote.map(i=>i.id));
+  const found=new Map();
+  if(!needed.size)return found;
+  for(let page=1;page<=50&&needed.size;page++){
+    const result=await api('/products?limit=48&page='+page);
+    for(const p of result.items||[])if(needed.has(Number(p.id))){
+      found.set(Number(p.id),p);
+      needed.delete(Number(p.id));
+    }
+    if(page>=(result.pages||1))break;
+  }
+  return found;
+}
+async function activateCloudProfile(user,mergeGuest){
+  const guestCart=mergeGuest?State.cart:[],guestLikes=mergeGuest?State.favorites:[];
+  const remoteLikes=Array.isArray(user.favorites)?user.favorites.map(Number):[];
+  const remoteCart=Array.isArray(user.cart)?user.cart:[];
+  const quantities=new Map();
+  for(const i of remoteCart){
+    const id=Number(i.id),qty=Number(i.quantity);
+    if(Number.isSafeInteger(id)&&id>0&&Number.isSafeInteger(qty)&&qty>0)
+      quantities.set(id,Math.min(qty,100));
+  }
+  for(const i of guestCart){
+    const id=Number(i.id),qty=Number(i.quantity);
+    if(Number.isSafeInteger(id)&&id>0&&Number.isSafeInteger(qty)&&qty>0)
+      quantities.set(id,Math.min(100,(quantities.get(id)||0)+qty));
+  }
+  const productMap=await productsForCloudCart([...quantities].map(([id,quantity])=>({id,quantity})));
+  State.cart=[...quantities].flatMap(([id,quantity])=>{
+    const p=productMap.get(id);
+    if(!p||Number(p.stock)<=0)return [];
+    return [{id,name:p.name,price:Number(p.price),image:p.images?.[0]||'',
+      stock:p.stock,quantity:Math.min(quantity,Number(p.stock))}];
+  });
+  State.favorites=[...new Set([...remoteLikes,...guestLikes.map(Number)])]
+    .filter(id=>Number.isSafeInteger(id)&&id>0).slice(0,1000);
+  State.localUser=null;
+  State.token='cloud';State.user=user;
+  localStorage.setItem('mtr_token','cloud');
+  localStorage.setItem('mtr_user',JSON.stringify(user));
+  if(mergeGuest){
+    localStorage.removeItem('mtr_cart');
+    localStorage.removeItem('mtr_fav');
+  }
+  saveCart();saveFav();updateCartBadge();updateFavBadge();
+}
+
 function renderLocalAuthForm(tab){
   $$('.modal__tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   const wrap=$('#authFormWrap');
