@@ -10,6 +10,7 @@ if(!process.env.TEST_DATABASE_URL){
   process.env.JWT_SECRET=process.env.JWT_SECRET||'test-only-jwt-secret-must-be-long-enough-2026';
   process.env.ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'test-only-admin-secret-2026';
   process.env.SHOP_OPEN='1';
+  process.env.DATA_LOCALIZATION_REVIEWED='1';
   process.env.SELLER_LEGAL_NAME='ООО Проверочный Магазин';
   process.env.SELLER_OGRN='1234567890123';
   process.env.SELLER_LEGAL_ADDRESS='Российская Федерация, г. Чита, улица Тестовая, д. 10';
