@@ -15,6 +15,19 @@ function sellerReady(){
 function personalDataEnabled(){
   return process.env.DATA_LOCALIZATION_REVIEWED==='1' && sellerReady();
 }
+// The free Russian PHP/MySQL identity service is never enabled until its
+// HTTPS endpoint and handling of buyer data have been independently approved.
+function externalAccountsUrl(){
+  if(process.env.ACCOUNT_REGISTRATION_ENABLED!=='1'
+    ||process.env.ACCOUNT_DATA_LOCATION_CONFIRMED!=='RU'
+    ||process.env.ACCOUNT_PRIVACY_POLICY_APPROVED!=='1')return '';
+  try{
+    const url=new URL(String(process.env.RU_ACCOUNT_API_URL||''));
+    if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash)
+      return '';
+    return url.toString();
+  }catch{return '';}
+}
 function ordersEnabled(){
   return process.env.SHOP_OPEN==='1' && process.env.DATA_LOCALIZATION_REVIEWED==='1' && String(process.env.JWT_SECRET||'').length>=32 && String(process.env.ADMIN_PASSWORD||'').length>=12 && sellerReady();
 }
@@ -35,10 +48,13 @@ function register(app){
       const secretOk=String(process.env.JWT_SECRET||'').length>=32;
       const adminOk=String(process.env.ADMIN_PASSWORD||'').length>=12;
       const readyForOrders=ordersEnabled();
-      const cloudAccountsEnabled=cloudAccounts.open() && await cloudAccounts.ready().then(()=>true).catch(()=>false);
+      const cloudAccountApiBase=externalAccountsUrl();
+      const cloudAccountsEnabled=!!cloudAccountApiBase || (
+        cloudAccounts.open() && await cloudAccounts.ready().then(()=>true).catch(()=>false)
+      );
       res.set('Cache-Control','no-store');
       res.json({version:'2.1',databaseReady:true,acceptingOrders:readyForOrders,
-        adminConfigured:adminOk && secretOk,customerAccountsEnabled:personalDataEnabled(),cloudAccountsEnabled,sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
+        adminConfigured:adminOk && secretOk,customerAccountsEnabled:personalDataEnabled(),cloudAccountsEnabled,cloudAccountApiBase,sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
         paymentsOnline:false,shippingPrice:'Уточняется магазином при подтверждении'});
     }catch(e){
       console.error('[SHOP-BOOT]',e.message);
