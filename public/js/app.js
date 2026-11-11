@@ -271,7 +271,7 @@ function productCard(p) {
         <div class="card__stock ${inStock?'in':'out'}">${inStock?'✓ В наличии':'Нет в наличии'}</div>
         <div class="card__foot">
           <span class="card__price">${money(p.price)}</span>
-          <button class="btn btn--primary btn--sm" ${inStock?'':'disabled'} onclick='addToCart(${JSON.stringify({id:p.id,name:p.name,price:p.price,images:p.images})})'>В корзину</button>
+          <button class="btn btn--primary btn--sm" onclick="navigate('#/product/${esc(p.slug)}')">Подробнее</button>
         </div>
       </div>
     </article>`;
@@ -499,8 +499,8 @@ async function renderProduct(slug) {
           <div class="product__price">${money(p.price)}</div>
           <div class="product__stock" style="color:${inStock?'var(--green)':'var(--hohloma)'}">${inStock?'✓ В наличии ('+p.stock+' шт.)':'Нет в наличии'}</div>
           <div class="product__actions">
-            <button class="btn btn--primary btn--lg" ${inStock?'':'disabled'} id="addCartBtn">В корзину</button>
-            <button class="btn btn--gold btn--lg" ${inStock?'':'disabled'} id="buyNowBtn">Купить сразу</button>
+            <span class="v2-purchase-note">Просмотр товара. Заказы доступны на основном сайте.</span>
+            
             <button class="btn btn--ghost card__fav ${State.favorites.includes(p.id)?'active':''}" data-fav="${p.id}" onclick="toggleFav(${p.id})" style="width:auto">♥</button>
           </div>
           <div class="product__section"><h3>Описание</h3><p>${esc(p.description)}</p></div>
@@ -508,14 +508,13 @@ async function renderProduct(slug) {
           <div class="product__section">
             ${p.material?`<span class="tag">Состав: ${esc(p.material)}</span>`:''}
             ${p.width?`<span class="tag">Ширина: ${esc(p.width)}</span>`:''}
-            <span class="tag">Ручная работа</span>
-            <span class="tag">Сделано в Чите</span>
+
           </div>
         </div>
       </div>
 
       ${related.length?`
-      <div class="section__head" style="text-align:left"><h2 style="font-size:28px">С этим покупают</h2></div>
+      <div class="section__head" style="text-align:left"><h2 style="font-size:28px">Похожие товары</h2></div>
       <div class="products-grid">${related.map(productCard).join('')}</div>`:''}
 
       <div class="section" style="padding-bottom:0">
@@ -523,16 +522,7 @@ async function renderProduct(slug) {
         <div id="reviewsList">
           ${reviews.length?reviews.map(r=>`<div class="review" style="margin-bottom:14px"><div class="review__stars">${'★'.repeat(r.rating)}</div><p class="review__text">${esc(r.text)}</p><div class="review__author">${esc(r.author_name)}</div></div>`).join(''):'<p class="empty">Пока нет отзывов. Будьте первым!</p>'}
         </div>
-        <div class="info-block" style="margin-top:20px">
-          <h3>Оставить отзыв</h3>
-          <form id="reviewForm">
-            <div class="form-row"><label>Оценка</label>
-              <select name="rating"><option value="5">★★★★★ Отлично</option><option value="4">★★★★ Хорошо</option><option value="3">★★★ Нормально</option><option value="2">★★ Плохо</option><option value="1">★ Ужасно</option></select></div>
-            ${State.token?'':'<div class="form-row"><label>Имя</label><input name="name" placeholder="Ваше имя"></div>'}
-            <div class="form-row"><label>Отзыв</label><textarea name="text" placeholder="Поделитесь впечатлением…" required></textarea></div>
-            <button class="btn btn--primary" type="submit">Отправить отзыв</button>
-          </form>
-        </div>
+        <p class="v2-purchase-note">Отзывы и покупки в тестовой версии отключены.</p>
       </div>
     </div>`;
 
