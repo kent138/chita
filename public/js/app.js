@@ -28,7 +28,7 @@ const State = {
   moderationTimer: null         // таймер polling для панели модерации
 };
 
-const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, customerAccountsEnabled:false, seller:null };
+const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, customerAccountsEnabled:false, cloudAccountsEnabled:false, seller:null };
 const CatalogCache=new Map();
 
 // -------------------- API-обёртка --------------------
@@ -73,20 +73,39 @@ function toast(msg, type = '') {
 }
 
 function localStorageKeys(){
+  if(Shop.cloudAccountsEnabled&&State.token==='cloud'&&State.user?.id){
+    const id=String(State.user.id);
+    if(/^[a-f0-9-]{36}$/i.test(id))
+      return {cart:'mtr_cloud_cart_'+id,favorites:'mtr_cloud_fav_'+id};
+  }
   return State.localUser&&window.LocalAccounts
     ?window.LocalAccounts.keys(State.localUser)
     :{cart:'mtr_cart',favorites:'mtr_fav'};
 }
+let cartUpload=Promise.resolve(),likesUpload=Promise.resolve();
 function saveCart() {
   localStorage.setItem(localStorageKeys().cart,JSON.stringify(State.cart));
   updateCartBadge();
+  if(Shop.cloudAccountsEnabled&&State.token==='cloud'){
+    const cart=State.cart.map(i=>({id:Number(i.id),quantity:Number(i.quantity)}));
+    cartUpload=cartUpload.catch(()=>{}).then(()=>
+      api('/cloud-auth/cart',{method:'PUT',body:{cart}})
+    );
+    cartUpload.catch(()=>toast('Корзина сохранена на устройстве, но синхронизация пока недоступна','error'));
+  }
 }
 function saveFav() {
   localStorage.setItem(localStorageKeys().favorites,JSON.stringify(State.favorites));
   updateFavBadge();
-  if (State.token && Shop.customerAccountsEnabled)
+  if(Shop.cloudAccountsEnabled&&State.token==='cloud'){
+    const favorites=[...State.favorites];
+    likesUpload=likesUpload.catch(()=>{}).then(()=>
+      api('/cloud-auth/favorites',{method:'PUT',body:{favorites}})
+    );
+    likesUpload.catch(()=>toast('Избранное сохранено на устройстве, но синхронизация пока недоступна','error'));
+  }else if(State.token&&Shop.customerAccountsEnabled)
     api('/auth/favorites',{method:'PUT',body:{favorites:State.favorites}})
-      .catch(()=>toast('Избранное сохранено на устройстве, но синхронизация не удалась','error'));
+      .catch(()=>toast('Не удалось синхронизировать избранное','error'));
 }
 function updateCartBadge() {
   const count = State.cart.reduce((s, i) => s + i.quantity, 0);
