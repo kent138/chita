@@ -1,0 +1,49 @@
+:root {
+  --ink:#39291e;
+  --ink-soft:#76685e;
+  --cream:#f8f5ef;
+  --paper:#fffefd;
+  --terra:#a65137;
+}
+.v2-notice {
+  background:#f0e5d8; color:#533a2f; border-bottom:1px solid #decdbb;
+  padding:11px 22px; text-align:center; font-size:13px; line-height:1.5;
+}
+.v2-notice strong {font-weight:800}
+.v2-notice a {font-weight:800;color:#813c2c;margin-left:7px;text-decoration:underline}
+body.v2-preview {background:#fcfaf7}
+.v2-preview .header {background:rgba(255,252,248,.97); backdrop-filter:blur(14px)}
+.v2-preview .page-head h1 {letter-spacing:-.03em}
+.v2-preview .card {
+  border-radius:18px; overflow:hidden; background:#fff; border:1px solid #ece3d8;
+  box-shadow:0 5px 23px rgba(65,42,25,.055);
+  transition:transform .22s,box-shadow .22s;
+}
+.v2-preview .card:hover {transform:translateY(-3px);box-shadow:0 13px 25px rgba(65,42,25,.10)}
+.v2-preview .card__media img {aspect-ratio:1/1;object-fit:cover}
+.v2-preview .btn {transition:transform .18s,background .2s}
+.v2-preview .btn:hover:not(:disabled) {transform:translateY(-1px)}
+.v2-preview .catalog__head {padding-bottom:10px}
+.v2-preview #catGrid {min-height:170px}
+.v2-pages {display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:7px;margin:27px 0}
+.v2-pages button {
+  min-width:40px; padding:9px 13px; border:1px solid #dfd3c6;
+  background:white;color:#543b2e;border-radius:10px;cursor:pointer;
+}
+.v2-pages button[aria-current="page"] {background:#8f4c35;border-color:#8f4c35;color:white}
+.v2-pages button:disabled {opacity:.35;cursor:default}
+.v2-loading {display:flex;align-items:center;justify-content:center;gap:12px;min-height:160px;color:#746357}
+.v2-loading::before {
+  content:"";display:block;width:22px;height:22px;border-radius:50%;
+  border:2px solid #e2d5c7;border-top-color:#9c543d;animation:v2spin .72s linear infinite;
+}
+@keyframes v2spin {to{transform:rotate(360deg)}}
+.v2-preview #loginBtn,.v2-preview #registerBtn,.v2-preview #cartBtn,.v2-preview #favBtn {
+  display:none !important;
+}
+@media(max-width:640px) {
+  .v2-notice {font-size:12px;padding:8px 10px}
+  .v2-preview .card {border-radius:12px}
+  .v2-pages {gap:4px}
+  .v2-pages button {padding:7px 10px;min-width:34px}
+}
