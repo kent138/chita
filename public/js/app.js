@@ -199,7 +199,7 @@ function renderCloudAuthForm(tab){
     button.disabled=true;
     try{
       const body={username:f.get('username'),password:f.get('password')};
-      if(isRegister)body.passwordRepeat=f.get('passwordRepeat');
+      if(isRegister){body.passwordRepeat=f.get('passwordRepeat');body.consent=f.get('consent')==='on';}
       const data=await api('/cloud-auth/'+(isRegister?'register':'login'),{method:'POST',body});
       await activateCloudProfile(data.user,true);
       closeModal();
