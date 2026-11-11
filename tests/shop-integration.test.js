@@ -62,7 +62,7 @@ if(!process.env.TEST_DATABASE_URL){
     const customer=await ask('/api/auth/register',{method:'POST',
       body:JSON.stringify({name:'Покупатель Тест',phone:'79998887766',password:'securePass123!',passwordRepeat:'securePass123!',consent:true})});
     assert.equal(customer.status,201);
-    assert.match(customer.cookie,'mtr_v2_session=');
+    assert.match(customer.cookie,/mtr_v2_session=/);
     userCookie=customer.cookie.split(';')[0];
     const me=await ask('/api/auth/me',{headers:{Cookie:userCookie}});
     assert.equal(me.body.phone,'79998887766');
