@@ -153,14 +153,18 @@ function authModal(tab = 'login') {
   }
   if(!Shop.customerAccountsEnabled){
     openModal(`
-      <div class="modal__tabs">
-        <button data-tab="login" class="${tab==='login'?'active':''}">Вход</button>
-        <button data-tab="register" class="${tab==='register'?'active':''}">Регистрация</button>
-      </div>
-      <div id="authFormWrap"></div>
-      <p class="local-auth-note">Профиль работает <b>на этом устройстве</b>. Телефон и адрес не нужны, пароль не передаётся на сервер. На другом телефоне войти пока нельзя, а после очистки браузера данные могут исчезнуть.</p>`);
-    $$('.modal__tabs button').forEach(b=>b.addEventListener('click',()=>renderLocalAuthForm(b.dataset.tab)));
-    renderLocalAuthForm(tab);
+      <div class="local-profile-intro">
+        <div class="local-profile-intro__icon">♥</div>
+        <h2>Регистрация на всех устройствах</h2>
+        <p>Мы подключаем общую защищённую базу покупателей в России. После подключения можно будет зарегистрироваться один раз и входить с любого телефона или компьютера.</p>
+        <p>Пока вход временно недоступен. Корзина и избранное работают без аккаунта и сохраняются в этом браузере.</p>
+        <div class="local-profile-intro__actions">
+          <button class="btn btn--primary" id="openGuestProfile">Мои лайки</button>
+          <button class="btn btn--ghost" id="openGuestCart">Моя корзина</button>
+        </div>
+      </div>`);
+    $('#openGuestProfile').addEventListener('click',()=>{closeModal();navigate('#/account?tab=fav');});
+    $('#openGuestCart').addEventListener('click',()=>{closeModal();openCart();});
     return;
   }
   openModal(`
