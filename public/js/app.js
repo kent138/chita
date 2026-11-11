@@ -16,7 +16,7 @@ const State = {
   moderationTimer: null         // таймер polling для панели модерации
 };
 
-const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, seller:null };
+const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, customerAccountsEnabled:false, seller:null };
 
 // -------------------- API-обёртка --------------------
 async function api(path, { method = 'GET', body, admin = false } = {}) {
@@ -1294,13 +1294,14 @@ async function initializeShop(){
     Shop.databaseReady=!!cfg.databaseReady;
     Shop.acceptingOrders=!!cfg.acceptingOrders;
     Shop.adminConfigured=!!cfg.adminConfigured;
+    Shop.customerAccountsEnabled=!!cfg.customerAccountsEnabled;
     Shop.seller=cfg.seller||null;
-    document.body.classList.toggle('v2-preview',!Shop.databaseReady);
+    document.body.classList.toggle('v2-preview',!Shop.acceptingOrders);
     $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
     $('#shopNoticeText').textContent=Shop.acceptingOrders
       ?'Каталог и оформление заказов работают. Оплата согласуется с магазином.'
       :Shop.databaseReady
-        ?'База товаров и личные кабинеты подключены. Приём заказов пока выключен.'
+        ?'База товаров подключена. Админ-панель доступна после входа. Регистрация покупателей и заказы пока выключены.'
         :'Каталог работает. Оформление заказов включим после подключения отдельной базы данных.';
     const adminReady=Shop.databaseReady&&Shop.adminConfigured;
     $('#menuEditCatalog').hidden=false;
@@ -1309,7 +1310,7 @@ async function initializeShop(){
     $('#menuRequests').hidden=!adminReady;
     $('#menuReviews').hidden=!adminReady;
     renderAuthUI();
-    if(Shop.databaseReady&&State.token){
+    if(Shop.customerAccountsEnabled&&State.token){
       try{const me=await api('/auth/me');State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));}
       catch{State.token=null;State.user=null;localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');}
       renderAuthUI();
