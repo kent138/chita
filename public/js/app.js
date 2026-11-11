@@ -379,130 +379,100 @@ async function renderHome() {
 // ============================================================
 let catalogFacets = null;
 async function renderCatalog(_m, params) {
-  const preCat = params.get('category') || '';
-  const preSearch = params.get('search') || '';
-  const known = catalogFacets || { categories: [], materials: [] };
-  app.innerHTML = `
-    <div class="container page-head">
-      <div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Каталог</div>
-      <h1>Каталог</h1>
-      <p style="color:var(--ink-soft)">Ткани и материалы в наличии · быстрая загрузка</p>
-    </div>
-    <div class="container section" style="padding-top:20px">
-      <div class="catalog" id="catalogRoot">
-        <aside class="filters">
-          <h3>Фильтры</h3>
-          <div class="filter-group">
-            <h4>Категория</h4>
-            <div id="catCategories"></div>
-          </div>
-          <div class="filter-group">
-            <h4>Состав</h4>
-            <div id="catMaterials"></div>
-          </div>
-          <div class="filter-group">
-            <h4>Цена, ₽</h4>
-            <div class="price-range">
-              <input type="number" id="minPrice" placeholder="от" min="0">
-              <span>—</span>
-              <input type="number" id="maxPrice" placeholder="до" min="0">
-            </div>
-          </div>
-          <div class="filter-group">
-            <label><input type="checkbox" id="inStock"> Только в наличии</label>
-          </div>
-          <button class="btn btn--primary btn--block" id="applyFilters">Применить</button>
-          <button class="btn btn--link btn--block" id="resetFilters">Сбросить</button>
-        </aside>
-        <div>
-          <div class="catalog__head">
-            <span class="catalog__count" id="catCount">Загружаем товары…</span>
-          </div>
-          <div class="products-grid" id="catGrid"></div>
-          <div id="catFeedback" class="catalog-feedback" role="status">Получаем товары…</div>
-          <div class="catalog-more">
-            <button class="btn btn--ghost btn--lg" id="catMore" hidden>Показать ещё</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-
-  const root = $('#catalogRoot');
-  let page = 0, total = 0, sequence = 0;
-  const PAGE_SIZE = 24;
-
-  function updateFacets(facets) {
-    const category = root.querySelector('input[name="category"]:checked')?.value ?? preCat;
-    const material = root.querySelector('input[name="material"]:checked')?.value ?? '';
-    root.querySelector('#catCategories').innerHTML =
-      `<label><input type="radio" name="category" value="" ${category ? '' : 'checked'}> Все</label>` +
-      facets.categories.map(x => `<label><input type="radio" name="category" value="${esc(x)}" ${category===x?'checked':''}> ${esc(x)}</label>`).join('');
-    root.querySelector('#catMaterials').innerHTML =
-      `<label><input type="radio" name="material" value="" ${material ? '' : 'checked'}> Любой</label>` +
-      facets.materials.map(x => `<label><input type="radio" name="material" value="${esc(x)}" ${material===x?'checked':''}> ${esc(x)}</label>`).join('');
-  }
-
-  updateFacets(known);
-
-  async function load(more = false) {
-    const n = ++sequence;
-    const targetPage = more ? page + 1 : 1;
-    const q = new URLSearchParams();
-    const cat = root.querySelector('input[name="category"]:checked')?.value || (!catalogFacets ? preCat : '');
-    const mat = root.querySelector('input[name="material"]:checked')?.value || '';
-    if (cat) q.set('category', cat);
-    if (mat) q.set('material', mat);
-    if ($('#minPrice').value) q.set('minPrice', $('#minPrice').value);
-    if ($('#maxPrice').value) q.set('maxPrice', $('#maxPrice').value);
-    if ($('#inStock').checked) q.set('inStock', '1');
-    if (preSearch) q.set('search', preSearch);
-    q.set('limit', PAGE_SIZE);
-    q.set('page', targetPage);
-    root.querySelector('#catFeedback').textContent = 'Загружаем товары…';
-    root.querySelector('#catMore').hidden = true;
-    if (!more) root.querySelector('#catGrid').innerHTML =
-      '<div class="catalog-skeleton"></div><div class="catalog-skeleton"></div><div class="catalog-skeleton"></div>';
-    try {
-      const result = await api('/products?' + q.toString());
-      if (n !== sequence || !root.isConnected) return;
-      const items = result.items || [];
-      total = result.total || 0;
-      page = targetPage;
-      root.querySelector('#catCount').textContent = 'Найдено товаров: ' + total;
-      if (more) root.querySelector('#catGrid').insertAdjacentHTML('beforeend', items.map(productCard).join(''));
-      else root.querySelector('#catGrid').innerHTML = items.length
-        ? items.map(productCard).join('')
-        : '<div class="empty">По вашему запросу ничего не найдено.</div>';
-      root.querySelector('#catFeedback').textContent = '';
-      root.querySelector('#catMore').hidden = page * PAGE_SIZE >= total;
-    } catch (err) {
-      if (n !== sequence || !root.isConnected) return;
-      root.querySelector('#catFeedback').textContent = 'Не удалось загрузить каталог: ' + err.message;
-      root.querySelector('#catMore').hidden = false;
-      root.querySelector('#catMore').textContent = 'Повторить';
+  // Render immediately: filters and products load independently.
+  let filters={category:params.get('category')||'',material:'',minPrice:'',maxPrice:'',inStock:false};
+  let currentPage=1,requestSerial=0;
+  const pageSize=24;
+  app.innerHTML = [
+    '<div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Каталог</div>',
+    '<h1>Каталог тканей и фурнитуры</h1><p style="color:var(--ink-soft)">Материалы для творчества, шитья и вдохновения.</p></div>',
+    '<div class="container section" style="padding-top:20px"><div class="catalog"><aside class="filters">',
+    '<h3>Фильтры</h3><div id="v2Filters">Загружаем фильтры…</div></aside><div>',
+    '<div class="catalog__head"><span class="catalog__count" id="catCount" aria-live="polite">Загружаем товары…</span></div>',
+    '<div class="products-grid" id="catGrid"><div class="v2-loading">Загружаем каталог…</div></div>',
+    '<nav class="v2-pages" id="v2Pages" aria-label="Страницы каталога"></nav></div></div></div>'
+  ].join('');
+  const grid=$('#catGrid'),counter=$('#catCount'),pages=$('#v2Pages'),filterBox=$('#v2Filters');
+  const active=()=>$('#catGrid')===grid;
+  async function loadPage(page=1){
+    currentPage=page;
+    const req=++requestSerial;
+    grid.innerHTML='<div class="v2-loading">Загружаем товары…</div>';
+    counter.textContent='Загружаем товары…';pages.innerHTML='';
+    const q=new URLSearchParams({page:String(currentPage),limit:String(pageSize)});
+    if(filters.category)q.set('category',filters.category);
+    if(filters.material)q.set('material',filters.material);
+    if(filters.minPrice!=='')q.set('minPrice',filters.minPrice);
+    if(filters.maxPrice!=='')q.set('maxPrice',filters.maxPrice);
+    if(filters.inStock)q.set('inStock','1');
+    try{
+      const data=await api('/products?'+q.toString());
+      if(!active()||req!==requestSerial)return;
+      const items=Array.isArray(data.items)?data.items:[];
+      const total=Number(data.total)||0;
+      const count=Math.max(1,Number(data.pages)||1);
+      counter.textContent='Найдено товаров: '+total;
+      grid.innerHTML=items.length?items.map(productCard).join(''):'<div class="empty">Ничего не найдено.</div>';
+      if(count>1){
+        const nums=[...new Set([1,count,currentPage-1,currentPage,currentPage+1].filter(n=>n>=1&&n<=count))].sort((a,b)=>a-b);
+        let html='<button data-page="'+Math.max(1,currentPage-1)+'" '+(currentPage<=1?'disabled':'')+'>‹</button>';
+        nums.forEach((n,i)=>{
+          if(i && n-nums[i-1]>1)html+='<span>…</span>';
+          html+='<button data-page="'+n+'" '+(n===currentPage?'aria-current="page"':'')+'>'+n+'</button>';
+        });
+        html+='<button data-page="'+Math.min(count,currentPage+1)+'" '+(currentPage>=count?'disabled':'')+'>›</button>';
+        pages.innerHTML=html;
+        pages.querySelectorAll('button[data-page]').forEach(btn=>btn.addEventListener('click',()=>{
+          if(btn.disabled)return;loadPage(Number(btn.dataset.page));
+          window.scrollTo({top:0,behavior:'smooth'});
+        }));
+      }
+    }catch(e){
+      if(!active()||req!==requestSerial)return;
+      counter.textContent='Не удалось загрузить товары';
+      grid.innerHTML='<div class="empty">'+esc(e.message)+' <button id="v2Retry" class="btn btn--primary">Повторить</button></div>';
+      $('#v2Retry')?.addEventListener('click',()=>loadPage(currentPage));
     }
   }
-
-  root.querySelector('#applyFilters').addEventListener('click', () => load());
-  root.querySelector('#catCategories').addEventListener('change', () => load());
-  root.querySelector('#catMaterials').addEventListener('change', () => load());
-  root.querySelector('#catMore').addEventListener('click', () => load(page > 0));
-  root.querySelector('#resetFilters').addEventListener('click', () => {
-    root.querySelectorAll('input[name="category"][value=""], input[name="material"][value=""]').forEach(i => i.checked = true);
-    root.querySelector('#minPrice').value = '';
-    root.querySelector('#maxPrice').value = '';
-    root.querySelector('#inStock').checked = false;
-    load();
-  });
-  load();
-  if (!catalogFacets) {
-    api('/products/facets').then(facets => {
-      catalogFacets = facets;
-      if (root.isConnected) updateFacets(facets);
-    }).catch(err => {
-      console.warn('Фильтры временно недоступны:', err.message);
-    });
-  }
+  loadPage(); // Start before filters finish downloading.
+  (async()=>{
+    try{
+      const facets=catalogFacets||await api('/products/facets');
+      if(!active())return;
+      catalogFacets=facets;
+      let html='<div class="filter-group"><h4>Категория</h4><label><input type="radio" name="category" value="" '+(!filters.category?'checked':'')+'> Все</label>';
+      html+=facets.categories.map(c=>'<label><input type="radio" name="category" value="'+esc(c)+'" '+(filters.category===c?'checked':'')+'> '+esc(c)+'</label>').join('');
+      html+='</div><div class="filter-group"><h4>Материал</h4><label><input type="radio" name="material" value="" checked> Любой</label>';
+      html+=facets.materials.map(m=>'<label><input type="radio" name="material" value="'+esc(m)+'"> '+esc(m)+'</label>').join('');
+      html+='</div><div class="filter-group"><h4>Цена, ₽</h4><div class="price-range">';
+      html+='<input type="number" id="minPrice" min="0" placeholder="от"><span>—</span><input type="number" id="maxPrice" min="0" placeholder="до"></div></div>';
+      html+='<div class="filter-group"><label><input type="checkbox" id="inStock"> Только в наличии</label></div>';
+      html+='<button class="btn btn--primary btn--block" id="applyFilters">Применить</button>';
+      html+='<button class="btn btn--link btn--block" id="resetFilters">Сбросить</button>';
+      filterBox.innerHTML=html;
+      function sync(){
+        filters={
+          category:$('input[name="category"]:checked',filterBox)?.value||'',
+          material:$('input[name="material"]:checked',filterBox)?.value||'',
+          minPrice:$('#minPrice',filterBox)?.value||'',
+          maxPrice:$('#maxPrice',filterBox)?.value||'',
+          inStock:$('#inStock',filterBox)?.checked||false
+        };
+        loadPage(1);
+      }
+      $('#applyFilters',filterBox).addEventListener('click',sync);
+      $$('input[type="radio"],input[type="checkbox"]',filterBox).forEach(e=>e.addEventListener('change',sync));
+      $('#resetFilters',filterBox).addEventListener('click',()=>{
+        filters={category:'',material:'',minPrice:'',maxPrice:'',inStock:false};
+        filterBox.querySelector('input[name="category"][value=""]').checked=true;
+        filterBox.querySelector('input[name="material"][value=""]').checked=true;
+        $('#minPrice',filterBox).value='';$('#maxPrice',filterBox).value='';$('#inStock',filterBox).checked=false;
+        loadPage(1);
+      });
+    }catch(e){
+      if(active())filterBox.innerHTML='<p class="empty">Фильтры временно недоступны. Каталог можно просматривать.</p>';
+    }
+  })();
 }
 
 // ============================================================
