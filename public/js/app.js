@@ -1181,17 +1181,44 @@ document.addEventListener('click', e => {
   }
 });
 
+async function initializeShop(){
+  try{
+    const cfg=await api('/config');
+    Shop.databaseReady=!!cfg.databaseReady;
+    Shop.acceptingOrders=!!cfg.acceptingOrders;
+    Shop.adminConfigured=!!cfg.adminConfigured;
+    document.body.classList.toggle('v2-preview',!Shop.acceptingOrders);
+    $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
+    $('#shopNoticeText').textContent=Shop.acceptingOrders
+      ?'Каталог и оформление заказов работают. Оплата согласуется с магазином.'
+      :Shop.databaseReady
+        ?'База товаров и личные кабинеты подключены. Приём заказов пока выключен.'
+        :'Каталог работает. Оформление заказов включим после подключения отдельной базы данных.';
+    const adminReady=Shop.databaseReady&&Shop.adminConfigured;
+    $('#menuModeration').hidden=!adminReady;
+    $('#menuRequests').hidden=!adminReady;
+    $('#menuReviews').hidden=!adminReady;
+    renderAuthUI();
+    if(Shop.acceptingOrders&&State.token){
+      try{const me=await api('/auth/me');State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));}
+      catch{State.token=null;State.user=null;localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');}
+      renderAuthUI();
+    }
+  }catch(err){
+    console.warn('Магазин ещё не настроен:',err.message);
+    document.body.classList.add('v2-preview');
+  }
+}
+
 // ============================================================
 //  ИНИЦИАЛИЗАЦИЯ
 // ============================================================
 renderAuthUI();
 updateCartBadge();
 updateFavBadge();
+initializeShop();
 if (!window.location.hash) window.location.hash = '#/';
 router();
 
 // Проверяем валидность токена при загрузке
-if (State.token) {
-  api('/auth/me').catch(() => { /* токен истёк */ State.token=null; State.user=null;
-    localStorage.removeItem('mtr_token'); localStorage.removeItem('mtr_user'); renderAuthUI(); });
-}
+// Session is verified by initializeShop after the database is ready.
