@@ -3,8 +3,12 @@ const { Pool } = require('pg');
 const { get } = require('@vercel/blob');
 
 // Completely separate PostgreSQL database: never touches the original Turso store.
+const externallyManaged = process.env.DB_SCHEMA_MANAGED === '1';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // Supabase stores application tables in a private, non-exposed schema.
+  // The session pooler retains this startup setting across API queries.
+  options: externallyManaged ? '-c search_path=matreshka_private,public' : undefined,
   max: 5, connectionTimeoutMillis: 8000, idleTimeoutMillis: 20000,
   application_name: 'matreshka-v2-store'
 });
@@ -39,27 +43,35 @@ async function sourceCatalog() {
 async function bootstrap() {
   const c = await pool.connect();
   try {
-    await c.query('SELECT pg_advisory_lock(20261111,20)');
-    for(const sql of ddl) await c.query(sql);
-    const n=(await c.query('SELECT count(*)::int AS n FROM shop_products')).rows[0].n;
-    if(n===0) {
-      const catalog=await sourceCatalog();
-      await c.query('BEGIN');
-      try {
-        for(const p of catalog) {
-          await c.query(
-            "INSERT INTO shop_products (id,slug,name,description,composition,material,width,price,category,stock,is_popular,images,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14) ON CONFLICT (id) DO NOTHING",
-            [p.id,p.slug,p.name,p.description||'',p.composition||'',p.material||'',p.width||'',
-              Number(p.price),p.category||'',Math.max(0,Number(p.stock)||0),!!p.isPopular,
-              JSON.stringify(p.images||[]),p.createdAt||new Date().toISOString(),p.updatedAt||new Date().toISOString()]
-          );
-        }
-        await c.query('COMMIT');
-      } catch(e){await c.query('ROLLBACK');throw e;}
+    await c.query('BEGIN');
+    // Transaction-scoped advisory lock works with pooled PostgreSQL connections.
+    await c.query('SELECT pg_advisory_xact_lock(20261111,20)');
+    if (externallyManaged) {
+      const schema = (await c.query('SELECT current_schema() AS active_schema')).rows[0].active_schema;
+      if (schema !== 'matreshka_private') {
+        throw new Error('Database connection is not using the isolated matreshka_private schema');
+      }
+    } else {
+      for (const sql of ddl) await c.query(sql);
     }
+    const n=(await c.query('SELECT count(*)::int AS n FROM shop_products')).rows[0].n;
+    if (n === 0) {
+      const catalog=await sourceCatalog();
+      for (const p of catalog) {
+        await c.query(
+          "INSERT INTO shop_products (id,slug,name,description,composition,material,width,price,category,stock,is_popular,images,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14) ON CONFLICT (id) DO NOTHING",
+          [p.id,p.slug,p.name,p.description||'',p.composition||'',p.material||'',p.width||'',
+            Number(p.price),p.category||'',Math.max(0,Number(p.stock)||0),!!p.isPopular,
+            JSON.stringify(p.images||[]),p.createdAt||new Date().toISOString(),p.updatedAt||new Date().toISOString()]
+        );
+      }
+    }
+    await c.query('COMMIT');
+  } catch(e) {
+    try {await c.query('ROLLBACK');}catch{}
+    throw e;
   } finally {
-    try {await c.query('SELECT pg_advisory_unlock(20261111,20)');}
-    finally {c.release();}
+    c.release();
   }
 }
 async function ready() {
