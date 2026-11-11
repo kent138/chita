@@ -820,7 +820,7 @@ function renderPrivacy() {
     <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Конфиденциальность</div><h1>Обработка персональных данных</h1></div>
     <div class="container section" style="padding-top:16px"><div class="info-block">
       <p><b>Оператор:</b> ${esc(s.name||'Реквизиты продавца будут указаны перед запуском приёма заказов')}.</p>
-      <p><b>ОГРН/ОГРНИП:</b> ${esc(s.ogrn||'Будет указан до запуска')}.</p>
+      <p><b>ИНН или ОГРН/ОГРНИП:</b> ${esc(s.inn||s.ogrn||'Будет указан до запуска')}.</p>
       <p><b>Юридический адрес:</b> ${esc(s.address||'Будет указан до запуска')}.</p>
       <p><b>Контакт:</b> ${esc(s.contact||'+7 914 359-27-67')}.</p>
       <h2>Какие данные используются</h2>
