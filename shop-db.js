@@ -1,14 +1,41 @@
 'use strict';
 const { Pool } = require('pg');
 const { get } = require('@vercel/blob');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 
 // Completely separate PostgreSQL database: never touches the original Turso store.
 const externallyManaged = process.env.DB_SCHEMA_MANAGED === '1';
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 // The Vercel Supabase integration provides POSTGRES_URL, without copying
 // any passwords into code, client-side JavaScript, or documentation.
+// Supabase poolers use a private Root 2021 CA. Node.js does not trust it by
+// default, so pin the public root and verify the hostname instead of disabling
+// certificate validation. This fixes SELF_SIGNED_CERT_IN_CHAIN on Vercel.
+function verifiedConnection(){
+  if(!databaseUrl) return {connectionString:databaseUrl};
+  const url = new URL(databaseUrl);
+  const host = url.hostname.toLowerCase();
+  const isSupabase = host.endsWith('.pooler.supabase.com') ||
+    host === 'db.odaitemhtecieklsbnpd.supabase.co';
+  if(externallyManaged && isSupabase){
+    // node-postgres connection-string parameters override the ssl property.
+    // Remove them before supplying our explicit certificate trust chain.
+    for(const key of ['sslmode','sslrootcert','sslcert','sslkey']){
+      url.searchParams.delete(key);
+    }
+    const ca=readFileSync(path.join(__dirname,'config','supabase-root-2021.crt'),'utf8');
+    return {connectionString:url.toString(),ssl:{ca,rejectUnauthorized:true}};
+  }
+  // The only non-Supabase managed connection permitted is local integration
+  // testing via localhost or Unix-domain sockets.
+  if(externallyManaged && host && host!=='localhost' && host!=='127.0.0.1'){
+    throw new Error('Expected the dedicated Supabase database hostname');
+  }
+  return {connectionString:databaseUrl};
+}
 const driver = new Pool({
-  connectionString: databaseUrl,
+  ...verifiedConnection(),
   max: 5, connectionTimeoutMillis: 8000, idleTimeoutMillis: 20000,
   application_name: 'matreshka-v2-store'
 });
