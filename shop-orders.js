@@ -32,8 +32,8 @@ function checkoutInput(body){
  const paymentMethod=safeText(b.paymentMethod,70);
  const deliveryAddress=safeText(b.deliveryAddress,600);
  const comment=safeText(b.comment,2000);
- const giftWrap=!!b.giftWrap;
- const promoCode=safeText(b.promoCode,40).toUpperCase().normalize('NFC');
+ const giftWrap=false; // do not sell an unapproved gift-wrapping service
+ const promoCode=''; // discount codes are not configured
  if(customerName.length<2||!DELIVERY.includes(deliveryMethod)||!PAYMENTS.includes(paymentMethod))
    throw error('Заполните имя и выберите доступную доставку и оплату');
  if(deliveryMethod!=='Самовывоз'&&deliveryAddress.length<8)throw error('Укажите полный адрес доставки');
