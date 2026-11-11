@@ -90,7 +90,7 @@ module.exports=function(app){
     const list=await readCatalog();
     res.json({categories:[...new Set(list.map(p=>p.category).filter(Boolean))].sort(),
      materials:[...new Set(list.map(p=>p.material).filter(Boolean))].sort(),
-     priceMin:Math.min(0,...list.map(p=>p.price)),priceMax:Math.max(0,...list.map(p=>p.price))});
+     priceMin:list.length?Math.min(...list.map(p=>p.price)):0,priceMax:Math.max(0,...list.map(p=>p.price))});
   }));
   app.get('/api/products/suggest',asyncRoute(async(req,res)=>{
     const q=String(req.query.q||'').trim().toLocaleLowerCase('ru');
@@ -136,7 +136,7 @@ module.exports=function(app){
     await saveCatalog(list.filter(p=>p.id!==id),etag);res.json({ok:true});
   }));
   // A one-time import of publicly visible catalog products; disabled after catalogue created.
-  app.post('/api/v2/import-batch',asyncRoute(async(req,res)=>{
+  app.post('/api/v2/import-batch',checkAdmin,asyncRoute(async(req,res)=>{
     if(process.env.V2_IMPORT_ENABLED!=='1') return res.status(403).json({error:'Импорт отключён'});
     try{await head(KEY);return res.status(409).json({error:'Каталог уже создан'});}catch(e){if(!notFound(e))throw e;}
     const start=Math.max(0,Math.floor(Number(req.query.start)||0));
@@ -149,7 +149,7 @@ module.exports=function(app){
     await put('v2/staging/batch-'+start+'.json',JSON.stringify(selected),{access:'public',addRandomSuffix:false,contentType:'application/json'});
     res.json({done:selected.length,start,total:source.length,next:start+selected.length});
   }));
-  app.post('/api/v2/import-finalize',asyncRoute(async(req,res)=>{
+  app.post('/api/v2/import-finalize',checkAdmin,asyncRoute(async(req,res)=>{
     if(process.env.V2_IMPORT_ENABLED!=='1')return res.status(403).json({error:'Импорт отключён'});
     try{await head(KEY);return res.status(409).json({error:'Каталог уже создан'});}catch(e){if(!notFound(e))throw e;}
     const total=Math.floor(Number(req.query.total)||0),step=Math.floor(Number(req.query.step)||4);
