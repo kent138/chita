@@ -19,10 +19,10 @@ function register(app){
       await ready();
       const secretOk=String(process.env.JWT_SECRET||'').length>=32;
       const adminOk=String(process.env.ADMIN_PASSWORD||'').length>=12;
-      const readyForOrders=secretOk && process.env.SHOP_OPEN==='1';
+      const readyForOrders=secretOk && adminOk && process.env.SHOP_OPEN==='1';
       res.set('Cache-Control','no-store');
       res.json({version:'2.1',databaseReady:true,acceptingOrders:readyForOrders,
-        adminConfigured:adminOk,paymentMethods:['При получении','Согласовать с магазином'],
+        adminConfigured:adminOk && secretOk,paymentMethods:['При получении','Согласовать с магазином'],
         paymentsOnline:false,shippingPrice:'Уточняется магазином при подтверждении'});
     }catch(e){
       console.error('[SHOP-BOOT]',e.message);
