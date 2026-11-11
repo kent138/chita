@@ -306,6 +306,7 @@ const routes = [
   { re: /^\/b2b$/,              render: renderB2B },
   { re: /^\/returns$/,          render: renderReturns },
   { re: /^\/privacy$/,          render: renderPrivacy },
+  { re: /^\/privacy$/,          render: renderPrivacy },
   { re: /^\/account$/,          render: renderAccount }
 ];
 
@@ -594,7 +595,7 @@ async function renderCheckout() {
             
             <div class="form-row"><label>Комментарий к заказу</label><textarea name="comment" placeholder="Пожелания по заказу, удобное время доставки…"></textarea></div>
           </div>
-          <label class="checkbox-row consent-row"><input id="orderConsent" type="checkbox" required><span>Согласен(на) на обработку контактных данных для оформления заказа</span></label>
+          <label class="checkbox-row consent-row"><input id="orderConsent" type="checkbox" required><span>Согласен(на) на обработку данных для оформления заказа согласно <a href="#/privacy" data-link>политике конфиденциальности</a></span></label>
         </form>
 
         <aside class="filters checkout-summary">
@@ -805,24 +806,29 @@ function renderB2B() {
 // ============================================================
 function renderReturns() {
   app.innerHTML = `
-    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Возврат и гарантия</div><h1>Возврат и гарантия</h1></div>
-    <div class="container section" style="padding-top:16px">
-      <div class="info-block">
-        <h2>Гарантия качества</h2>
-        <p>Мы отвечаем за каждое изделие. Если товар пришёл с браком или повреждён при доставке — заменим или вернём деньги.</p>
-        <h3>Возврат товара</h3>
-        <p>Вы можете вернуть товар надлежащего качества в течение <b>14 дней</b> с момента получения, если он не был в употреблении, сохранены его вид, свойства и упаковка.</p>
-        <h3>Как оформить возврат:</h3>
-        <ul>
-          <li>Свяжитесь с нами по телефону <a href="tel:+79143592767" style="color:var(--terra)">+7 914 359-27-67</a> или в мессенджере.</li>
-          <li>Опишите причину возврата, при необходимости приложите фото.</li>
-          <li>Согласуем способ возврата и вернём средства в течение 10 дней.</li>
-        </ul>
-        <h3>Что нельзя вернуть</h3>
-        <p>Изделия, изготовленные индивидуально под заказ, а также товары, потерявшие товарный вид по вине покупателя.</p>
-        <p style="margin-top:20px;color:var(--ink-soft)">Наша цель — чтобы вы остались довольны. Если что-то пошло не так, просто напишите нам — решим по-человечески.</p>
-      </div>
-    </div>`;
+    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Возвраты</div><h1>Возврат и обмен</h1></div>
+    <div class="container section" style="padding-top:16px"><div class="info-block">
+      <h2>Есть вопрос по заказу?</h2>
+      <p>Для вопросов о качестве, обмене и возврате свяжитесь с магазином по телефону <a href="tel:+79143592767">+7 914 359-27-67</a>. Сообщите номер заказа и описание ситуации.</p>
+      <p>Сроки и условия возврата зависят от вида товара и способа его приобретения. Для тканей, отпускаемых метражом, могут действовать специальные правила. Магазин рассмотрит обращение в соответствии с законодательством РФ.</p>
+      <p>Почтовый адрес магазина: Чита, ул. Бутина, 44, пом. 1.</p>
+    </div></div>`;
+}
+function renderPrivacy() {
+  const s=Shop.seller||{};
+  app.innerHTML = `
+    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Конфиденциальность</div><h1>Обработка персональных данных</h1></div>
+    <div class="container section" style="padding-top:16px"><div class="info-block">
+      <p><b>Оператор:</b> ${esc(s.name||'Реквизиты продавца будут указаны перед запуском приёма заказов')}.</p>
+      <p><b>ОГРН/ОГРНИП:</b> ${esc(s.ogrn||'Будет указан до запуска')}.</p>
+      <p><b>Юридический адрес:</b> ${esc(s.address||'Будет указан до запуска')}.</p>
+      <p><b>Контакт:</b> ${esc(s.contact||'+7 914 359-27-67')}.</p>
+      <h2>Какие данные используются</h2>
+      <p>При регистрации и заказе могут обрабатываться имя, телефон, адрес доставки, состав заказов и данные учётной записи. Данные необходимы для подтверждения заказа, связи с покупателем, доставки, истории покупок и защиты учётных записей.</p>
+      <h2>Обращения по данным</h2>
+      <p>Для запроса доступа, уточнения или удаления персональных данных обратитесь по указанному контакту. Отдельные сведения о заказах могут храниться в случаях, предусмотренных законодательством.</p>
+      <p class="form-hint">Этот раздел требует проверки и утверждения владельцем магазина до публичного запуска приёма заказов.</p>
+    </div></div>`;
 }
 
 // ============================================================
@@ -1200,6 +1206,7 @@ async function initializeShop(){
     Shop.databaseReady=!!cfg.databaseReady;
     Shop.acceptingOrders=!!cfg.acceptingOrders;
     Shop.adminConfigured=!!cfg.adminConfigured;
+    Shop.seller=cfg.seller||null;
     Shop.seller=cfg.seller||null;
     document.body.classList.toggle('v2-preview',!Shop.databaseReady);
     $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
