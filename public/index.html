@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Мануфактура «Матрёшка» — сделано в Чите с душой</title>
-  <meta name="description" content="Мануфактура «Матрёшка» из Читы — товары ручной работы из сибирских материалов. Посуда, текстиль, игрушки, декор. Доставка по России.">
+  <title>Матрёшка 2.0 — тестовый каталог тканей и фурнитуры</title>
+  <meta name="description" content="Матрёшка 2.0 — быстрый каталог тканей и фурнитуры в Чите. Тестовая версия магазина.">
   <meta name="keywords" content="матрёшка, Чита, ручная работа, сибирские товары, посуда, текстиль, Забайкалье">
   <meta property="og:title" content="Мануфактура «Матрёшка» — сибирская душа в каждой вещи">
   <meta property="og:description" content="Товары ручной работы из Читы. Тепло. Натуральность. Традиции.">
@@ -26,7 +26,8 @@
     // ym(00000000, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true });
   </script>
 </head>
-<body>
+<body class="v2-preview">
+  <div class="v2-notice" role="status"><strong>Матрёшка 2.0 — тестовая версия</strong> · Здесь можно смотреть каталог и проверять товары. Заказы и личные кабинеты пока отключены. <a href="https://matreshkachita.vercel.app/" target="_blank" rel="noopener">Основной магазин</a></div>
   <!-- ШАПКА -->
   <header class="header" id="siteHeader">
     <div class="container header__inner">
@@ -76,7 +77,7 @@
           <button class="icon-btn dots" id="dotsBtn" title="Меню">⋯</button>
           <div class="dots-menu__dropdown" id="dotsDropdown" hidden>
             <button id="menuEditCatalog">✎ Редактировать каталог</button>
-            <button id="menuModeration">📋 Панель модерации</button>
+            <!-- Модерация заказов доступна только на основном сайте -->
           </div>
         </div>
 
