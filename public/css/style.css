@@ -557,13 +557,32 @@ img { max-width: 100%; display: block; }
   letter-spacing: .01em;
 }
 .v2-notice a { color: #f9d6ad; text-decoration: underline; text-underline-offset: 3px; }
-.v2-preview #cartBtn,
-.v2-preview #favBtn,
-.v2-preview #authButtons,
-.v2-preview #userMenu,
-
-.v2-preview .card__foot .btn,
-.v2-preview button[onclick*="addToCart"] { display: none !important; }
+/* Basket and favorites are usable without checkout or customer accounts. */
+.card__add {
+  width:100%; margin-top:12px; padding:11px 14px;
+  border-radius:11px; font-weight:700;
+}
+.card__add:disabled {opacity:.45;cursor:not-allowed;}
+.cart-note {
+  margin:13px 0; font-size:13px; line-height:1.5;
+  color:var(--ink-soft); background:var(--cream);
+  border-radius:10px; padding:11px 13px;
+}
+.account-cart {display:flex;flex-direction:column;gap:11px;margin-bottom:18px;}
+.account-cart-item {
+  display:flex;align-items:center;gap:14px;border:1px solid var(--line);
+  padding:13px;border-radius:13px;background:var(--paper);
+}
+.account-cart-item img {width:72px;height:72px;border-radius:10px;object-fit:cover;}
+.account-cart-item div {flex:1;min-width:0;}
+.account-cart-item strong {display:block;overflow-wrap:anywhere;}
+.account-cart-item p {font-size:13px;color:var(--ink-soft);margin-top:6px;}
+.local-profile-hint {color:var(--ink-soft);font-size:13px;margin-top:18px;line-height:1.6;}
+.local-profile-intro {text-align:center;}
+.local-profile-intro__icon {font-size:48px;color:var(--hohloma);line-height:1.2;margin-bottom:8px;}
+.local-profile-intro p {color:var(--ink-soft);line-height:1.65;margin:12px auto;max-width:520px;}
+.local-profile-intro__actions {display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:20px 0;}
+.local-profile-intro__actions .btn {min-width:170px;}
 .catalog-more { display: flex; justify-content: center; margin: 30px 0; }
 .catalog-feedback { padding: 14px 0; color: var(--ink-soft); text-align: center; }
 .catalog-feedback:empty { display: none; }
@@ -632,11 +651,8 @@ img { max-width: 100%; display: block; }
 .v2-preview #catMore[hidden] { display: none !important; }
 
 /* Store launch gate and admin improvements */
-.v2-preview #addCartBtn,
 .v2-preview #buyNowBtn,
-.v2-preview .v2-review-form,
-.v2-preview .card__fav,
-.v2-preview .product__actions .card__fav { display:none!important; }
+.v2-preview .v2-review-form { display:none!important; }
 .v2-review-form { max-width:520px; border-top:1px solid var(--cream-2); padding-top:20px; }
 .v2-review-form textarea { min-height:95px; }
 .admin-toolbar #adminSearch {
