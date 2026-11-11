@@ -429,7 +429,15 @@ function onAuthSuccess(data) {
 }
 
 async function logout() {
-  if(State.localUser&&!Shop.customerAccountsEnabled){
+  if(Shop.cloudAccountsEnabled&&State.token==='cloud'){
+    try{await api('/cloud-auth/logout',{method:'POST'});}
+    catch(e){console.warn('Не удалось завершить облачную сессию',e.message);}
+    State.token=null;State.user=null;
+    State.cart=storedJSON('mtr_cart',[]);
+    State.favorites=storedJSON('mtr_fav',[]);
+    updateCartBadge();updateFavBadge();
+    localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');
+  }else if(State.localUser&&!Shop.customerAccountsEnabled){
     exitLocalProfile();
   }else{
     try { await api('/auth/logout', { method: 'POST' }); } catch (e) { console.warn(e.message); }
@@ -442,8 +450,8 @@ async function logout() {
 }
 
 function renderAuthUI() {
-  const local=!!State.localUser&&!Shop.customerAccountsEnabled;
-  const authed = !!State.token&&Shop.customerAccountsEnabled || local;
+  const local=!!State.localUser&&!Shop.customerAccountsEnabled&&!Shop.cloudAccountsEnabled;
+  const authed = !!State.token&&(Shop.customerAccountsEnabled||Shop.cloudAccountsEnabled)||local;
   $('#authButtons').hidden = authed;
   $('#userMenu').hidden = !authed;
   if (authed) $('#userName').textContent = (local?State.localUser?.name:State.user?.name)?.split(' ')[0] || 'Кабинет';
@@ -1121,25 +1129,26 @@ function renderPrivacy() {
 //  СТРАНИЦА: ЛИЧНЫЙ КАБИНЕТ
 // ============================================================
 async function renderAccount(_m, params) {
-  const signedIn=!!State.token&&Shop.customerAccountsEnabled;
-  const localSignedIn=!!State.localUser&&!Shop.customerAccountsEnabled;
+  const signedIn=!!State.token&&(Shop.customerAccountsEnabled||Shop.cloudAccountsEnabled);
+  const realBuyer=!!State.token&&Shop.customerAccountsEnabled;
+  const localSignedIn=!!State.localUser&&!Shop.customerAccountsEnabled&&!Shop.cloudAccountsEnabled;
   const tab=params.get('tab')||(signedIn?'orders':'fav');
-  if(!signedIn&&!['fav','cart'].includes(tab)){navigate('#/account?tab=fav');return;}
+  if((!signedIn||!realBuyer)&&!['fav','cart'].includes(tab)){navigate('#/account?tab=fav');return;}
   app.innerHTML = `
     <div class="container page-head">
       <h1>${signedIn||localSignedIn?'Личный кабинет':'Мой профиль'}</h1>
-      <p style="color:var(--ink-soft)">${signedIn?esc(State.user?.name||'Покупатель')+' · '+esc(State.user?.phone||''):localSignedIn?esc(State.localUser.name)+' · профиль на этом устройстве':'Ваши сохранённые товары на этом устройстве'}</p>
+      <p style="color:var(--ink-soft)">${signedIn?esc(State.user?.name||State.user?.username||'Покупатель')+(State.user?.phone?' · '+esc(State.user.phone):' · аккаунт на всех устройствах'):localSignedIn?esc(State.localUser.name)+' · профиль на этом устройстве':'Ваши сохранённые товары на этом устройстве'}</p>
     </div>
     <div class="container section" style="padding-top:16px">
       <div class="account">
         <nav class="account__nav">
-          ${signedIn?`<button data-tab="orders" class="${tab==='orders'?'active':''}">📦 История заказов</button>`:''}
+          ${realBuyer?`<button data-tab="orders" class="${tab==='orders'?'active':''}">📦 История заказов</button>`:''}
           <button data-tab="fav" class="${tab==='fav'?'active':''}">♥ Понравившиеся (${State.favorites.length})</button>
           <button data-tab="cart" class="${tab==='cart'?'active':''}">🛒 Моя корзина (${State.cart.reduce((n,i)=>n+i.quantity,0)})</button>
-          ${signedIn?`<button data-tab="address" class="${tab==='address'?'active':''}">📍 Адреса доставки</button>`:''}
+          ${realBuyer?`<button data-tab="address" class="${tab==='address'?'active':''}">📍 Адреса доставки</button>`:''}
         </nav>
         <div id="accountBody"></div>
-        ${signedIn?'':`<p class="local-profile-hint">${localSignedIn?'Вы вошли в локальный профиль.':'Можно создать локальный профиль через кнопку «Регистрация» вверху сайта.'} Корзина и избранное сохраняются только на этом устройстве. Войти с другого телефона пока нельзя.</p>`}
+        ${Shop.cloudAccountsEnabled&&signedIn?'<p class="local-profile-hint">Аккаунт подключён к серверу: корзина и избранное доступны после входа с другого телефона.</p>':signedIn?'':`<p class="local-profile-hint">${localSignedIn?'Вы вошли в локальный профиль.':'Можно создать локальный профиль через кнопку «Регистрация» вверху сайта.'} Корзина и избранное сохраняются только на этом устройстве. Войти с другого телефона пока нельзя.</p>`}
       </div>
     </div>`;
   $$('.account__nav button').forEach(b => b.addEventListener('click', () => navigate('#/account?tab=' + b.dataset.tab)));
@@ -1159,7 +1168,7 @@ async function renderAccount(_m, params) {
       $('#openSavedCart').addEventListener('click',openCart);
     }else body.innerHTML='<div class="empty">В корзине пока нет товаров.<br><a href="#/catalog">Открыть каталог</a></div>';
   }
-  else if (tab === 'orders' && signedIn) {
+  else if (tab === 'orders' && realBuyer) {
     body.innerHTML = '<div class="spinner">Загрузка заказов…</div>';
     const orders = await api('/auth/orders');
     body.innerHTML = orders.length ? orders.map(o => `
@@ -1189,7 +1198,7 @@ async function renderAccount(_m, params) {
     body.innerHTML = favs.length ? `<div class="products-grid">${favs.map(productCard).join('')}</div>`
       : '<div class="empty">В избранном пусто.<br>Нажимайте ♥ на товарах, чтобы сохранить их здесь.</div>';
   }
-  else if (tab === 'address' && signedIn) {
+  else if (tab === 'address' && realBuyer) {
     const me = await api('/auth/me');
     const addresses = me.addresses || [];
     body.innerHTML = `
