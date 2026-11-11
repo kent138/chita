@@ -1,0 +1,27 @@
+-- Import into the account's ONLY MySQL database on the Russian web host.
+-- Compatible with MySQL 5.7. Never execute on the Swedish Supabase store.
+CREATE TABLE IF NOT EXISTS mtr_accounts (
+ id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+ username VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
+ password_hash VARCHAR(255) NOT NULL,
+ favorites MEDIUMTEXT NOT NULL,
+ cart MEDIUMTEXT NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS mtr_sessions (
+ token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+ account_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ expires_at DATETIME NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_account (account_id),
+ INDEX idx_expiry (expires_at),
+ CONSTRAINT fk_mtr_account FOREIGN KEY (account_id) REFERENCES mtr_accounts(id)
+   ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS mtr_rate_limits (
+ key_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+ failures INT NOT NULL DEFAULT 0,
+ blocked_until DATETIME NULL,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
