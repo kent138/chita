@@ -11,24 +11,24 @@ const State = {
   user: JSON.parse(localStorage.getItem('mtr_user') || 'null'),
   cart: JSON.parse(localStorage.getItem('mtr_cart') || '[]'),
   favorites: JSON.parse(localStorage.getItem('mtr_fav') || '[]'),
-  adminPassword: null,          // хранится в памяти на время сессии панелей
+  adminPassword: null,          // старое значение больше не используется: вход через защищённую cookie
   moderationTimer: null         // таймер polling для панели модерации
 };
 
 // -------------------- API-обёртка --------------------
 async function api(path, { method = 'GET', body, admin = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (State.token) headers['Authorization'] = 'Bearer ' + State.token;
-  if (admin && State.adminPassword) headers['X-Admin-Password'] = State.adminPassword;
+  // Session and administrator authentication use HttpOnly same-site cookies.
+  // Passwords are not transmitted with each API call.
 
   let res;
   try {
     res = await fetch('/api' + path, {
-      method, headers, body: body ? JSON.stringify(body) : undefined
+      method, headers, credentials: 'same-origin', body: body ? JSON.stringify(body) : undefined
     });
   } catch (e) {
     // fetch падает, если сервер не запущен или недоступен
-    throw new Error('Нет связи с сервером. Убедитесь, что сервер запущен: откройте папку проекта и выполните «npm start».');
+    throw new Error('Нет связи с магазином. Проверьте интернет и повторите попытку.');
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ('Ошибка сервера (код ' + res.status + ')'));
@@ -123,7 +123,7 @@ function renderAuthForm(tab) {
       <form id="registerForm">
         <div class="form-row"><label>Имя</label><input name="name" placeholder="Как вас зовут?" required></div>
         <div class="form-row"><label>Телефон</label><input name="phone" type="tel" placeholder="+7 914 000-00-00" required></div>
-        <div class="form-row"><label>Пароль</label><input name="password" type="password" placeholder="Не короче 6 символов" required></div>
+        <div class="form-row"><label>Пароль</label><input name="password" type="password" placeholder="Не короче 10 символов" required></div>
         <div class="form-row"><label>Повторите пароль</label><input name="passwordRepeat" type="password" required></div>
         <label class="checkbox-row consent-row">
           <input type="checkbox" name="consent" id="regConsent" required>
@@ -155,14 +155,14 @@ async function handleRegister(e) {
   try {
     const data = await api('/auth/register', { method: 'POST', body: {
       name: f.get('name'), phone: f.get('phone'),
-      password: f.get('password'), passwordRepeat: f.get('passwordRepeat') } });
+      password: f.get('password'), passwordRepeat: f.get('passwordRepeat'), consent: true } });
     onAuthSuccess(data);
   } catch (err) { showAuthErr(err.message); }
 }
 
 function onAuthSuccess(data) {
-  State.token = data.token; State.user = data.user;
-  localStorage.setItem('mtr_token', data.token);
+  State.token = 'session'; State.user = data.user;
+  localStorage.setItem('mtr_token', 'session');
   localStorage.setItem('mtr_user', JSON.stringify(data.user));
   closeModal();
   renderAuthUI();
@@ -176,7 +176,8 @@ function onAuthSuccess(data) {
   }).catch(() => {});
 }
 
-function logout() {
+async function logout() {
+  try { await api('/auth/logout', { method: 'POST' }); } catch (e) { console.warn(e.message); }
   State.token = null; State.user = null;
   localStorage.removeItem('mtr_token'); localStorage.removeItem('mtr_user');
   renderAuthUI();
@@ -898,9 +899,8 @@ function requireAdmin(onSuccess) {
   $('#admForm').addEventListener('submit', async e => {
     e.preventDefault();
     const pass = new FormData(e.target).get('password');
-    State.adminPassword = pass;
-    try { await api('/admin/verify', { method: 'POST', admin: true }); onSuccess(); }
-    catch { State.adminPassword = null; const el=$('#admErr'); el.textContent='Неверный пароль'; el.hidden=false; }
+    try { await api('/admin/login', { method: 'POST', body: { password: pass } }); onSuccess(); }
+    catch (err) { const el=$('#admErr'); el.textContent=err.message; el.hidden=false; }
   });
 }
 
