@@ -503,7 +503,7 @@ async function renderProduct(slug) {
           <div class="product__price">${money(p.price)}</div>
           <div class="product__stock" style="color:${inStock?'var(--green)':'var(--hohloma)'}">${inStock?'✓ В наличии ('+p.stock+' шт.)':'Нет в наличии'}</div>
           <div class="product__actions">
-            <span class="v2-purchase-note">Оформление заказов станет доступно после настройки магазина.</span>
+            ${Shop.acceptingOrders?'':'<span class="v2-purchase-note">Оформление заказов станет доступно после настройки магазина.</span>'}
             <button class="btn btn--primary" id="addCartBtn" ${inStock?'':'disabled'}>В корзину</button>
             <button class="btn btn--ghost" id="buyNowBtn" ${inStock?'':'disabled'}>Купить сейчас</button>
             
@@ -541,6 +541,7 @@ async function renderProduct(slug) {
   $('#buyNowBtn')?.addEventListener('click', () => { addToCart(p); navigate('#/checkout'); });
   $('#reviewForm')?.addEventListener('submit', async e => {
     e.preventDefault();
+    if (!State.token) { authModal('login'); return; }
     const f = new FormData(e.target);
     try {
       await api('/products/' + p.id + '/reviews', { method: 'POST',
@@ -915,7 +916,7 @@ async function openCatalogAdmin() {
           <td>${p.stock}</td>
           <td><div class="admin-actions">
             <button class="btn btn--ghost btn--sm" onclick="editProduct(${p.id})">✎</button>
-            <button class="btn btn--danger btn--sm" onclick="deleteProduct(${p.id},'${esc(p.name).replace(/'/g,"")}')">🗑</button>
+            <button class="btn btn--danger btn--sm" onclick="deleteProduct(${p.id})">🗑</button>
           </div></td>
         </tr>`).join('')}
       </tbody>
@@ -989,8 +990,8 @@ window.editProduct = async (id) => {
   const p = list.find(x => x.id === id);
   if (p) productForm(p);
 };
-window.deleteProduct = async (id, name) => {
-  if (!confirm('Удалить товар «' + name + '»?')) return;
+window.deleteProduct = async (id) => {
+  if (!confirm('Снять товар №' + id + ' с продажи? Действие сохранит историю заказов.')) return;
   await api('/admin/products/' + id, { method: 'DELETE', admin: true });
   toast('Товар удалён');
   catalogFacets = null;
