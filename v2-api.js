@@ -135,4 +135,41 @@ module.exports=function(app){
     await saveCatalog(list.filter(p=>p.id!==id),etag);res.json({ok:true});
   }));
 
+
+  // One-time migration: retrieves existing public catalog, uploads images to the V2 store.
+  // These routes are guarded, opt-in, and cannot overwrite an existing catalog.
+  app.post('/api/v2/import-batch',checkAdmin,asyncRoute(async(req,res)=>{
+    if(process.env.V2_IMPORT_ENABLED!=='1') return res.status(403).json({error:'Перенос отключён'});
+    try {await head(KEY); return res.status(409).json({error:'Каталог уже создан'});}
+    catch(e){if(!notFound(e)) throw e;}
+    const start=Math.max(0,Math.floor(Number(req.query.start)||0));
+    const count=Math.min(5,Math.max(1,Math.floor(Number(req.query.count)||4)));
+    const original=await fetch('https://matreshkachita.vercel.app/api/products',{signal:AbortSignal.timeout(30000)});
+    if(!original.ok) throw Object.assign(new Error('Старый каталог недоступен'),{statusCode:502});
+    const source=await original.json();
+    if(!Array.isArray(source)||source.length>10000) throw new Error('Неверный ответ старого каталога');
+    const subset=source.slice(start,start+count);
+    const saved=[];
+    for(const p of subset) saved.push({...p,images:await uploadImages(Array.isArray(p.images)?p.images:[],p.id)});
+    const file='v2/staging/batch-'+start+'.json';
+    await put(file,JSON.stringify(saved),{access:'public',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});
+    res.json({start,done:saved.length,total:source.length,next:start+saved.length});
+  }));
+  app.post('/api/v2/import-finalize',checkAdmin,asyncRoute(async(req,res)=>{
+    if(process.env.V2_IMPORT_ENABLED!=='1') return res.status(403).json({error:'Перенос отключён'});
+    try {await head(KEY); return res.status(409).json({error:'Каталог уже создан'});}
+    catch(e){if(!notFound(e)) throw e;}
+    const total=Math.floor(Number(req.query.total)||0);
+    const step=Math.floor(Number(req.query.step)||4);
+    if(total<1||total>10000||step<1||step>5) return res.status(400).json({error:'Неверные параметры'});
+    const list=[];
+    for(let i=0;i<total;i+=step) list.push(...await readBlob('v2/staging/batch-'+i+'.json'));
+    if(list.length!==total || new Set(list.map(p=>p.id)).size!==total ||
+       list.some(p=>(p.images||[]).some(img=>String(img).startsWith('data:'))))
+      throw new Error('Не все товары и фотографии перенесены');
+    await put(KEY,JSON.stringify(list),{access:'public',addRandomSuffix:false,allowOverwrite:true,
+        contentType:'application/json',cacheControlMaxAge:60});
+    cached=null;
+    res.json({imported:list.length,photos:list.reduce((n,p)=>n+(p.images||[]).length,0)});
+  }));
 };
