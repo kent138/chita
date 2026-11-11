@@ -52,14 +52,13 @@ function checkoutInput(body){
  return {customerName,customerPhone,deliveryMethod,paymentMethod,deliveryAddress,
    comment,giftWrap,promoCode,quantities,idempotencyKey,consent:b.consent===true};
 }
-function priceTotal(items,giftWrap,promoCode){
- let kopeks=items.reduce((s,p)=>s+Math.round(Number(p.price)*100)*p.qty,0);
- const promo=promoCode==='СИБИРЬ10'||promoCode==='SIBIR10'?.toUpperCase() ? 0.10
-    :promoCode==='ЧИТА15'||promoCode==='CHITA15' ? 0.15:0;
- if(promo)kopeks=Math.round(kopeks*(1-promo));
- if(giftWrap)kopeks+=15000;
- return Number((kopeks/100).toFixed(2));
+function priceTotal(items){
+  // Only the actual listed goods are charged. Delivery and payment are confirmed with the shop.
+  // No fictional coupons or unapproved gift-wrap fees.
+  const kopeks=items.reduce((sum,p)=>sum+Math.round(Number(p.price)*100)*p.qty,0);
+  return Number((kopeks/100).toFixed(2));
 }
+
 function register(app){
  app.post('/api/orders',wrap(async(req,res)=>{
    const b=checkoutInput(req.body);
@@ -95,7 +94,7 @@ function register(app){
           'INSERT INTO shop_order_items(order_id,product_id,product_name,product_price,quantity) VALUES($1,$2,$3,$4,$5)',
           [orderId,id,p.name,p.price,qty]);
      }
-     const total=priceTotal(products,b.giftWrap,b.promoCode);
+     const total=priceTotal(products);
      await c.query('UPDATE shop_orders SET total_price=$2 WHERE id=$1',[orderId,total]);
      await c.query('COMMIT');
      res.status(201).json({ok:true,orderId,total,paymentStatus:'Ожидает оплаты',
@@ -132,7 +131,7 @@ function register(app){
  }));
  app.put('/api/admin/orders/:id/payment',adminAuth,wrap(async(req,res)=>{
    const payment=safeText(req.body?.status,50);
-   if(!['Ожидает оплаты','Оплачен'].includes(payment))throw error('Некорректный статус оплаты');
+   if(!['Ожидает оплаты','Оплачен','Возврат'].includes(payment))throw error('Некорректный статус оплаты');
    const r=await pool.query('UPDATE shop_orders SET payment_status=$2,updated_at=now() WHERE id=$1 RETURNING id',[Number(req.params.id),payment]);
    if(!r.rowCount)throw error('Заказ не найден',404);
    res.json({ok:true,paymentStatus:payment});
