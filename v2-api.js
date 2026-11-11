@@ -52,7 +52,7 @@ async function uploadImages(images,id){
     const bytes=Buffer.from(m[3],'base64');
     if(bytes.length>8*1024*1024) throw Object.assign(new Error('Слишком большое изображение'),{statusCode:400});
     const path='v2/media/product-'+id+'-'+n+'-'+crypto.randomUUID()+'.'+ext;
-    const blob=await put(path,bytes,{access:'public',contentType:m[1],addRandomSuffix:false,cacheControlMaxAge:31536000});
+    const blob=await put(path,bytes,{access:'public',contentType:m[1],addRandomSuffix:false,allowOverwrite:true,cacheControlMaxAge:31536000});
     result.push(blob.url);
   }
   return result;
