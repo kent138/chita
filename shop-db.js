@@ -19,9 +19,9 @@ const driver = new Pool({
 function isolatedSql(sql){
   if(!externallyManaged)return sql;
   const qualify=text=>text
-    .replace(/\\b(FROM|JOIN|INTO|UPDATE)\\s+(shop_(?:users|products|orders|order_items|reviews|requests|auth_attempts|admin_attempts))\\b/gi,
+    .replace(/\b(FROM|JOIN|INTO|UPDATE)\s+(shop_(?:users|products|orders|order_items|reviews|requests|auth_attempts|admin_attempts))\b/gi,
       (_,verb,table)=>verb+' matreshka_private.'+table)
-    .replace(/nextval\\('shop_product_ids'\\)/gi,"nextval('matreshka_private.shop_product_ids')");
+    .replace(/nextval\('shop_product_ids'\)/gi,"nextval('matreshka_private.shop_product_ids')");
   if(typeof sql==='string')return qualify(sql);
   return sql&&typeof sql==='object'&&typeof sql.text==='string'
     ?{...sql,text:qualify(sql.text)}:sql;
