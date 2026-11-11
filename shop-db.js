@@ -6,9 +6,8 @@ const { get } = require('@vercel/blob');
 const externallyManaged = process.env.DB_SCHEMA_MANAGED === '1';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Supabase stores application tables in a private, non-exposed schema.
-  // The session pooler retains this startup setting across API queries.
-  options: externallyManaged ? '-c search_path=matreshka_private,public' : undefined,
+  // The dedicated matreshka_app role already has its private search_path
+  // configured in PostgreSQL, avoiding unsupported pooler startup options.
   max: 5, connectionTimeoutMillis: 8000, idleTimeoutMillis: 20000,
   application_name: 'matreshka-v2-store'
 });
