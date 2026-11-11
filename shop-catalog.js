@@ -17,6 +17,8 @@ const validNumber=(n,min,max,field)=>{
 function productData(b,old){
  const name=safeText(b.name ?? old?.name,250);
  if(name.length<2)throw error('Название товара должно содержать минимум 2 символа');
+ const stock=validNumber(b.stock??old?.stock,0,1000000,'остаток');
+ if(!Number.isInteger(stock))throw error('Остаток должен быть целым числом');
  return {
   name,description:safeText(b.description??old?.description,10000),
   composition:safeText(b.composition??old?.composition,1000),
@@ -24,7 +26,7 @@ function productData(b,old){
   width:safeText(b.width??old?.width,100),
   price:validNumber(b.price??old?.price,0,100000000,'цена'),
   category:safeText(b.category??old?.category,150),
-  stock:validNumber(b.stock??old?.stock,0,1000000,'остаток'),
+  stock,
   isPopular:b.isPopular===undefined?!!old?.is_popular:!!b.isPopular
  };
 }
