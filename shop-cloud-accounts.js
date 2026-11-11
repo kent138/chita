@@ -24,6 +24,9 @@ function getPool(){
   if(!['postgres:','postgresql:'].includes(url.protocol))
     throw ERROR('Для аккаунтов требуется PostgreSQL',503);
   const host=url.hostname.toLowerCase();
+  const local=['localhost','127.0.0.1'].includes(host);
+  if(!local && url.searchParams.get('sslmode')!=='verify-full')
+    throw ERROR('Для внешней российской базы нужен sslmode=verify-full',503);
   if(/(^|\.)supabase\.(com|co)$/.test(host)||host.endsWith('.pooler.supabase.com'))
     throw ERROR('База аккаунтов не должна указывать на существующий зарубежный Supabase',503);
   // Database certificate verification stays enabled. For a private CA, add
@@ -139,6 +142,7 @@ function register(app){
   });
   app.post('/api/cloud-auth/register',wrap(async(req,res)=>{
     const p=getPool(),login=validateLogin(req.body?.username),pwd=validatePassword(req.body?.password);
+    if(req.body?.consent!==true)throw ERROR('Нужно согласие на обработку данных аккаунта');
     if(req.body?.passwordRepeat!==pwd)throw ERROR('Пароли не совпадают');
     const ipKey=key(req,'register');
     await limit(p,ipKey);
