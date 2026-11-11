@@ -146,7 +146,7 @@ module.exports=function(app){
     const source=await response.json();
     const selected=source.slice(start,start+count);
     for(const p of selected) p.images=await uploadImages(p.images||[],p.id);
-    await put('v2/staging/batch-'+start+'.json',JSON.stringify(selected),{access:'public',addRandomSuffix:false,contentType:'application/json'});
+    await put('v2/staging/batch-'+start+'.json',JSON.stringify(selected),{access:'public',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});
     res.json({done:selected.length,start,total:source.length,next:start+selected.length});
   }));
   app.post('/api/v2/import-finalize',asyncRoute(async(req,res)=>{
