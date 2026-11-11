@@ -1,0 +1,94 @@
+name: Russian free account API tests
+on:
+  push:
+    branches: [matreshka-v2]
+    paths:
+      - 'hosting/free-russian-auth/**'
+      - '.github/workflows/free-russian-auth.yml'
+  workflow_dispatch:
+
+jobs:
+  php-mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: matreshka_ci
+          MYSQL_USER: matreshka_ci
+          MYSQL_PASSWORD: local_test_pw
+          MYSQL_ROOT_PASSWORD: mysql_local_root_pw
+        ports:
+          - '3306:3306'
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pmysql_local_root_pw"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+      - name: PHP syntax
+        run: php -l hosting/free-russian-auth/public_html/api.php
+      - name: Initialize isolated test MySQL
+        run: |
+          mysql --protocol=tcp --host=127.0.0.1 --port=3306 \
+            --user=matreshka_ci --password=local_test_pw matreshka_ci \
+            < hosting/free-russian-auth/schema-mysql57.sql
+      - name: Create throwaway configuration for test only
+        run: |
+          cat > hosting/free-russian-auth/matreshka-auth-config.php <<'PHP'
+          <?php
+          return [
+            'db_host'=>'127.0.0.1','db_port'=>3306,'db_name'=>'matreshka_ci',
+            'db_user'=>'matreshka_ci','db_password'=>'local_test_pw',
+            'secret'=>str_repeat('a1',32),
+            'allowed_origin'=>'https://matreshka-v2.vercel.app'
+          ];
+          PHP
+      - name: Start PHP API and smoke-test cross-device account sync
+        run: |
+          php -S 127.0.0.1:8099 -t hosting/free-russian-auth/public_html > /tmp/mtr-php.log 2>&1 &
+          sleep 2
+          python3 - <<'PY'
+          import json, urllib.request, urllib.error, secrets
+          base='http://127.0.0.1:8099/api.php?action='
+          origin='https://matreshka-v2.vercel.app'
+          def call(action, method='GET', data=None, token=None, allowed=True):
+              headers={'Content-Type':'application/json','Origin':origin if allowed else 'https://not-trusted.example'}
+              if token: headers['Authorization']='Bearer '+token
+              payload=None if data is None else json.dumps(data).encode()
+              req=urllib.request.Request(base+action,payload,headers,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r: return r.status,json.loads(r.read().decode()),r.headers
+              except urllib.error.HTTPError as e:
+                  return e.code,json.loads(e.read().decode()),e.headers
+          status,data,h=call('health')
+          assert status==200 and data['ok'],(status,data)
+          username='buyer_'+secrets.token_hex(4)
+          password='testing-passphrase-2026-strong'
+          reg=call('register','POST',{'username':username,'password':password,'passwordRepeat':password,'consent':True})
+          assert reg[0]==201,reg
+          first=reg[1]['token']
+          assert len(first)==64 and reg[1]['user']['username']==username
+          assert 'password_hash' not in reg[1]['user']
+          likes=call('favorites','PUT',{'favorites':[4,7,4]},first)
+          assert likes[0]==200 and likes[1]['favorites']==[4,7],likes
+          cart=call('cart','PUT',{'cart':[{'id':4,'quantity':2}]},first)
+          assert cart[0]==200,cart
+          wrong=call('login','POST',{'username':username,'password':'wrong'})
+          assert wrong[0]==401,wrong
+          second=call('login','POST',{'username':username,'password':password})
+          assert second[0]==200,second
+          state=call('me','GET',token=second[1]['token'])
+          assert state[0]==200, state
+          assert state[1]['favorites']==[4,7],state
+          assert state[1]['cart']==[{'id':4,'quantity':2}],state
+          assert call('me','GET',allowed=False)[0]==403
+          assert call('logout','POST',token=second[1]['token'])[0]==200
+          assert call('me','GET',token=second[1]['token'])[0]==401
+          print('PASS: Russian MySQL PHP registration, two-device login, saved cart/likes, CORS, logout')
+          PY
