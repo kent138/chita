@@ -931,6 +931,7 @@ async function openCatalogAdmin() {
     <h2>✎ Управление каталогом</h2>
     <div class="admin-toolbar">
       <span class="catalog__count">Товаров: ${products.length}</span>
+      <input id="adminSearch" type="search" placeholder="Поиск товара…" aria-label="Поиск товаров">
       <button class="btn btn--primary" id="addProductBtn">+ Добавить товар</button>
     </div>
     <div style="overflow-x:auto">
@@ -938,7 +939,7 @@ async function openCatalogAdmin() {
       <thead><tr><th>Фото</th><th>Название</th><th>Категория</th><th>Цена</th><th>Склад</th><th></th></tr></thead>
       <tbody id="admProducts">
         ${products.map(p=>`<tr>
-          <td><img src="${esc(p.images?.[0]||'')}"></td>
+          <td><img loading="lazy" decoding="async" width="52" height="52" src="${esc(p.images?.[0]||'')}"></td>
           <td><b>${esc(p.name)}</b></td>
           <td>${esc(p.category)}</td>
           <td>${money(p.price)}</td>
@@ -952,6 +953,10 @@ async function openCatalogAdmin() {
     </table>
     </div>`, 'xwide');
   $('#addProductBtn').addEventListener('click', () => productForm());
+  $('#adminSearch').addEventListener('input',e=>{
+    const q=e.target.value.toLocaleLowerCase('ru').trim();
+    $('#admProducts').querySelectorAll('tr').forEach(row=>{row.hidden=!row.textContent.toLocaleLowerCase('ru').includes(q);});
+  });
 }
 
 function productForm(product = null) {
@@ -1026,7 +1031,7 @@ window.deleteProduct = async (id, name) => {
 // ============================================================
 //  АДМИН: ПАНЕЛЬ МОДЕРАЦИИ ЗАКАЗОВ (пароль 7316, polling 10с)
 // ============================================================
-const STATUSES = ['Новый', 'В обработке', 'Отправлен', 'Выполнен', 'Отменён'];
+const STATUSES = ['Новый', 'В обработке', 'Готов к выдаче', 'Отправлен', 'Выполнен', 'Отменён'];
 let lastOrderCount = 0;
 
 async function openModeration() {
@@ -1062,13 +1067,13 @@ async function loadOrders(first) {
           <select class="status-select" onchange="changeOrderStatus(${o.id}, this.value)">
             ${STATUSES.map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
           </select>
-          ${(o.status==='Выполнен'||o.status==='Отменён')?`<button class="btn btn--danger btn--sm" title="Удалить заказ" onclick="deleteOrder(${o.id})">🗑</button>`:''}
+          <span class="status-pill">В истории</span>
         </div>
       </div>
       <div class="order-card__meta">
         👤 <b>${esc(o.customer_name)}</b> · 📞 <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a><br>
         🚚 ${esc(o.delivery_method)}${o.delivery_address?' — '+esc(o.delivery_address):''}<br>
-        💳 ${esc(o.payment_method)}${o.gift_wrap?' · 🎁 подарочная упаковка':''}${o.promo_code?' · промокод: '+esc(o.promo_code):''}<br>
+        💳 ${esc(o.payment_method)} · ${esc(o.payment_status||'Ожидает оплаты')}${o.gift_wrap?' · 🎁 подарочная упаковка':''}${o.promo_code?' · промокод: '+esc(o.promo_code):''}<br>
         🕒 ${new Date(o.created_at+' UTC').toLocaleString('ru-RU')}
         ${o.comment?`<br>💬 <i>${esc(o.comment)}</i>`:''}
       </div>
@@ -1083,16 +1088,34 @@ window.changeOrderStatus = async (id, status) => {
   catch (err) { toast(err.message, 'error'); }
 };
 
-// Удаление заказа из панели модерации (только выполненные/отменённые)
-window.deleteOrder = async (id) => {
-  if (!confirm('Удалить заказ №' + id + ' безвозвратно?')) return;
+// Удаление заказов отключено — история продаж должна сохраняться.
+async function openReviewModeration() {
+  const list=await api('/admin/reviews',{admin:true});
+  openModal('<h2>Отзывы на проверке</h2><div id="reviewModeration"></div>','wide');
+  $('#reviewModeration').innerHTML=list.length?list.map(r=>
+    '<div class="order-card"><b>'+esc(r.product_name)+'</b> · '+'★'.repeat(r.rating)+
+    '<p>'+esc(r.text)+'</p><small>'+esc(r.author_name)+'</small>'+
+    '<div class="admin-actions" style="margin-top:12px">'+
+    '<button class="btn btn--primary btn--sm" onclick="resolveReview('+r.id+',true)">Опубликовать</button>'+
+    '<button class="btn btn--danger btn--sm" onclick="resolveReview('+r.id+',false)">Отклонить</button>'+
+    '</div></div>').join(''):'<p class="empty">Новых отзывов нет.</p>';
+}
+window.resolveReview=async(id,approved)=>{
   try {
-    await api('/admin/orders/' + id, { method: 'DELETE', admin: true });
-    toast('Заказ №' + id + ' удалён', 'success');
-    lastOrderCount = 0; // чтобы уведомление о «новых» не сработало ложно
-    loadOrders(true);
-  } catch (err) { toast(err.message, 'error'); }
+    await api('/admin/reviews/'+id,{method:'PUT',admin:true,body:{approved}});
+    toast(approved?'Отзыв опубликован':'Отзыв отклонён','success');
+    openReviewModeration();
+  }catch(err){toast(err.message,'error');}
 };
+async function openRequests() {
+  const items=await api('/admin/requests',{admin:true});
+  openModal('<h2>Обращения покупателей и оптовиков</h2><div id="shopRequests"></div>','wide');
+  $('#shopRequests').innerHTML=items.length?items.map(i=>
+    '<div class="order-card"><div class="order-card__head"><b>'+esc(i.type)+'</b><span>'+
+    new Date(i.created_at).toLocaleString('ru-RU')+'</span></div><p>'+
+    esc(i.company)+' '+esc(i.name)+' '+esc(i.phone)+' '+esc(i.email)+'</p><p>'+
+    esc(i.message)+'</p></div>').join(''):'<p class="empty">Обращений пока нет.</p>';
+}
 
 // ============================================================
 //  ПОИСК С АВТОДОПОЛНЕНИЕМ
@@ -1133,7 +1156,9 @@ $('#cartOverlay').addEventListener('click', closeCart);
 
 $('#dotsBtn').addEventListener('click', e => { e.stopPropagation(); $('#dotsDropdown').hidden = !$('#dotsDropdown').hidden; });
 $('#menuEditCatalog').addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openCatalogAdmin); });
-$('#menuModeration').addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openModeration); });
+$('#menuModeration')?.addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openModeration); });
+$('#menuReviews')?.addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openReviewModeration); });
+$('#menuRequests')?.addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openRequests); });
 
 // Мобильное меню (бургер)
 $('#burgerBtn').addEventListener('click', () => {
