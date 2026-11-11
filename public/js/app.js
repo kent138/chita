@@ -320,9 +320,9 @@ window.addEventListener('hashchange', router);
 //  СТРАНИЦА: ГЛАВНАЯ
 // ============================================================
 async function renderHome() {
-  const popular = await api('/products?popular=1');
+  const popular = (await api('/products?limit=12')).items || [];
   app.innerHTML = `
-    <section class="hero">
+    <section class="hero hero--fabric">
       <div class="container">
         <div class="hero__solo">
           <span class="hero__eyebrow">Чита · Забайкальский край</span>
@@ -330,8 +330,11 @@ async function renderHome() {
           <p class="hero__lead">Магазин тканей и фурнитуры «Матрёшка» в Чите. Выбирайте материалы для своих идей — с фотографиями, ценами и актуальным ассортиментом.</p>
           <div class="hero__cta">
             <button class="btn btn--primary btn--lg" onclick="navigate('#/catalog')">Смотреть каталог</button>
-            <button class="btn btn--ghost btn--lg" onclick="navigate('#/about')">О мануфактуре</button>
+            <button class="btn btn--ghost btn--lg" onclick="navigate('#/contacts')">Адрес магазина</button>
           </div>
+        </div>
+        <div class="hero-v2-gallery" aria-label="Ткани из каталога">
+          ${popular.slice(0,3).map((p,i)=>`<figure class="hero-v2-tile hero-v2-tile--${i}"><img src="${esc(p.images?.[0]||'')}" alt="${esc(p.name)}" loading="${i===0?'eager':'lazy'}"><figcaption>${esc(p.name)}</figcaption></figure>`).join('')}
         </div>
       </div>
     </section>
@@ -349,55 +352,26 @@ async function renderHome() {
 
     <section class="section section--tint">
       <div class="container">
-        <div class="section__head"><h2>Популярные товары</h2><p>То, что покупают чаще всего</p><div class="ornament"></div></div>
+        <div class="section__head"><h2>Ткани в наличии</h2><p>Реальные товары из нашего каталога</p><div class="ornament"></div></div>
         <div class="products-grid">${popular.slice(0,8).map(productCard).join('')}</div>
         <div style="text-align:center;margin-top:34px"><button class="btn btn--gold btn--lg" onclick="navigate('#/catalog')">Весь каталог →</button></div>
       </div>
     </section>
 
-    <section class="section">
-      <div class="container story">
-        <div class="story__art">🏭</div>
+    <section class="section section--contact">
+      <div class="container v2-info-panel">
         <div>
-          <h2>История мануфактуры</h2>
-          <p>Всё началось в маленькой мастерской на улице Бутина. Несколько мастеров, любовь к дереву и желание делать вещи, которые служат годами и радуют глаз.</p>
-          <p>Сегодня «Матрёшка» — это команда читинских ремесленников, объединённых одной идеей: настоящее не выходит из моды. Мы работаем с сибирскими материалами и храним традиции народных промыслов.</p>
-          <button class="btn btn--ghost" onclick="navigate('#/about')">Узнать больше</button>
+          <span class="hero__eyebrow">Магазин в Чите</span>
+          <h2>Подберите ткань для новой идеи</h2>
+          <p>Изучайте фотографии, составы и цены прямо в каталоге. Уточнить характеристики и наличие можно у магазина «Матрёшка».</p>
+          <div class="v2-info-actions">
+            <a class="btn btn--primary btn--lg" href="#/catalog">Открыть каталог</a>
+            <a class="btn btn--ghost btn--lg" href="tel:+79143592767">Позвонить в магазин</a>
+          </div>
         </div>
-      </div>
-    </section>
-
-    <section class="section section--tint">
-      <div class="container">
-        <div class="section__head"><h2>Отзывы покупателей</h2><p>Нам доверяют по всей России</p><div class="ornament"></div></div>
-        <div class="reviews-grid">
-          ${[
-            {s:5,t:'Заказывала матрёшку в подарок — пришла быстро, упаковано с душой. Роспись просто загляденье!',a:'Ольга, Москва'},
-            {s:5,t:'Кедровая доска пахнет лесом на всю кухню. Чувствуется, что делали с любовью. Спасибо!',a:'Сергей, Новосибирск'},
-            {s:5,t:'Люблю поддерживать местных мастеров. Лён отличный, вышивка аккуратная. Буду заказывать ещё.',a:'Ирина, Чита'}
-          ].map(r=>`<div class="review"><div class="review__stars">${'★'.repeat(r.s)}</div><p class="review__text">«${r.t}»</p><div class="review__author">${r.a}</div></div>`).join('')}
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <div class="subscribe">
-          <h2>Первыми узнавайте о новинках</h2>
-          <p>Подпишитесь — расскажем о новых изделиях, акциях и жизни мануфактуры.</p>
-          <form class="subscribe__form" id="subForm">
-            <input type="email" name="email" placeholder="Ваш e-mail" required>
-            <button class="btn btn--gold btn--lg" type="submit">Подписаться</button>
-          </form>
-        </div>
+        <div class="v2-address"><span>Ждём вас по адресу</span><strong>Чита, ул. Бутина, 44</strong><span>Помещение 1</span><a href="#/contacts">Контакты и расположение →</a></div>
       </div>
     </section>`;
-  $('#subForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    try { await api('/subscribe', { method: 'POST', body: { email: new FormData(e.target).get('email') } });
-      toast('Спасибо за подписку!', 'success'); e.target.reset(); }
-    catch (err) { toast(err.message, 'error'); }
-  });
 }
 
 // ============================================================
