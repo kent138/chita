@@ -447,6 +447,8 @@ function onAuthSuccess(data) {
 
 async function logout() {
   if(Shop.cloudAccountsEnabled&&State.token==='cloud'){
+    // Finish in-flight cart/likes sync before revoking the session.
+    await Promise.allSettled([cartUpload,likesUpload]);
     try{await api('/cloud-auth/logout',{method:'POST'});}
     catch(e){console.warn('Не удалось завершить облачную сессию',e.message);}
     State.token=null;State.user=null;
