@@ -72,5 +72,5 @@ test('rejects orders and anonymous admin on a preview',async()=>{
   const order=await request('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   const admin=await request('/api/admin/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   assert.equal(order.response.status,503);
-  assert.equal(admin.response.status,403);
+  assert.equal(admin.response.status,503); // Insecure 4-digit admin password is refused until replaced
 });
