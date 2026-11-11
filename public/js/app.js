@@ -1003,6 +1003,58 @@ async function openCatalogAdmin() {
   load();
 }
 
+// Catalogue-only mode: show an actual useful overview instead of an empty menu.
+// This intentionally does NOT bypass the administrator's database-backed login.
+async function openCatalogReadOnly(){
+  let page=1,serial=0;
+  openModal(`
+    <h2>👁 Просмотр товаров</h2>
+    <p style="color:var(--ink-soft)">Все товары доступны для просмотра. Изменение цен, фотографий и остатков пока отключено, поскольку к новой версии не подключена отдельная база PostgreSQL.</p>
+    <div class="admin-toolbar">
+      <span class="catalog__count" id="v2ReadOnlyCount">Загрузка товаров…</span>
+      <input id="v2ReadOnlySearch" type="search" placeholder="Найти товар…" aria-label="Поиск по товарам">
+    </div>
+    <div id="v2ReadOnlyContent" aria-live="polite"></div>
+    <div class="admin-pagination" style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:20px">
+      <button class="btn btn--ghost btn--sm" id="v2ReadOnlyPrev">← Назад</button>
+      <span id="v2ReadOnlyPage">1 / 1</span>
+      <button class="btn btn--ghost btn--sm" id="v2ReadOnlyNext">Вперёд →</button>
+    </div>
+    <div class="info-block" style="margin-top:20px">
+      <h3>Как включить редактирование?</h3>
+      <p>Нужно подключить <b>новую независимую базу PostgreSQL</b> к проекту matreshka-v2 в Vercel. После подключения появится вход по паролю, а товары можно будет добавлять и изменять. Старый магазин при этом не затрагивается.</p>
+    </div>
+  `,'xwide');
+  const root=$('#modalContent');
+  const load=async()=>{
+    const n=++serial;
+    const q=new URLSearchParams({page:String(page),limit:'24'});
+    const search=root.querySelector('#v2ReadOnlySearch')?.value.trim();
+    if(search)q.set('search',search);
+    try{
+      const data=await api('/products?'+q.toString());
+      if(n!==serial||!root.querySelector('#v2ReadOnlyContent'))return;
+      root.querySelector('#v2ReadOnlyCount').textContent='Товаров: '+data.total;
+      root.querySelector('#v2ReadOnlyContent').innerHTML=data.items?.length
+        ? '<div class="products-grid">'+data.items.map(productCard).join('')+'</div>'
+        : '<p class="empty">Товаров не найдено.</p>';
+      root.querySelector('#v2ReadOnlyPage').textContent=page+' / '+Math.max(1,data.pages||1);
+      root.querySelector('#v2ReadOnlyPrev').disabled=page<=1;
+      root.querySelector('#v2ReadOnlyNext').disabled=page>=(data.pages||1);
+    }catch(err){
+      if(n===serial&&root.querySelector('#v2ReadOnlyContent'))
+        root.querySelector('#v2ReadOnlyContent').textContent='Ошибка загрузки: '+err.message;
+    }
+  };
+  let searchTimer;
+  root.querySelector('#v2ReadOnlyPrev').addEventListener('click',()=>{page=Math.max(1,page-1);load();});
+  root.querySelector('#v2ReadOnlyNext').addEventListener('click',()=>{page++;load();});
+  root.querySelector('#v2ReadOnlySearch').addEventListener('input',()=>{
+    clearTimeout(searchTimer);page=1;searchTimer=setTimeout(load,250);
+  });
+  load();
+}
+
 function productForm(product = null) {
   const isEdit = !!product;
   openModal(`
@@ -1210,7 +1262,7 @@ $('#cartClose').addEventListener('click', closeCart);
 $('#cartOverlay').addEventListener('click', closeCart);
 
 $('#dotsBtn').addEventListener('click', e => { e.stopPropagation(); $('#dotsDropdown').hidden = !$('#dotsDropdown').hidden; });
-$('#menuEditCatalog').addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openCatalogAdmin); });
+$('#menuEditCatalog').addEventListener('click', () => { $('#dotsDropdown').hidden = true; if(Shop.databaseReady&&Shop.adminConfigured) requireAdmin(openCatalogAdmin); else openCatalogReadOnly(); });
 $('#menuModeration')?.addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openModeration); });
 $('#menuReviews')?.addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openReviewModeration); });
 $('#menuRequests')?.addEventListener('click', () => { $('#dotsDropdown').hidden = true; requireAdmin(openRequests); });
@@ -1243,7 +1295,6 @@ async function initializeShop(){
     Shop.acceptingOrders=!!cfg.acceptingOrders;
     Shop.adminConfigured=!!cfg.adminConfigured;
     Shop.seller=cfg.seller||null;
-    Shop.seller=cfg.seller||null;
     document.body.classList.toggle('v2-preview',!Shop.databaseReady);
     $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
     $('#shopNoticeText').textContent=Shop.acceptingOrders
@@ -1252,7 +1303,8 @@ async function initializeShop(){
         ?'База товаров и личные кабинеты подключены. Приём заказов пока выключен.'
         :'Каталог работает. Оформление заказов включим после подключения отдельной базы данных.';
     const adminReady=Shop.databaseReady&&Shop.adminConfigured;
-    $('#menuEditCatalog').hidden=!adminReady;
+    $('#menuEditCatalog').hidden=false;
+    $('#menuEditCatalog').textContent=adminReady?'✎ Редактировать каталог':'👁 Просмотр товаров';
     $('#menuModeration').hidden=!adminReady;
     $('#menuRequests').hidden=!adminReady;
     $('#menuReviews').hidden=!adminReady;
