@@ -4,13 +4,39 @@ const { get } = require('@vercel/blob');
 
 // Completely separate PostgreSQL database: never touches the original Turso store.
 const externallyManaged = process.env.DB_SCHEMA_MANAGED === '1';
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // The dedicated matreshka_app role already has its private search_path
-  // configured in PostgreSQL, avoiding unsupported pooler startup options.
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+// The Vercel Supabase integration provides POSTGRES_URL, without copying
+// any passwords into code, client-side JavaScript, or documentation.
+const driver = new Pool({
+  connectionString: databaseUrl,
   max: 5, connectionTimeoutMillis: 8000, idleTimeoutMillis: 20000,
   application_name: 'matreshka-v2-store'
 });
+// The integration connects using its managed postgres role, whose default
+// search_path is public. Explicitly qualify ONLY table references rather than
+// changing a shared role's search_path (which could break Supabase services).
+// In particular this works with both session and transaction poolers.
+function isolatedSql(sql){
+  if(!externallyManaged)return sql;
+  const qualify=text=>text
+    .replace(/\\b(FROM|JOIN|INTO|UPDATE)\\s+(shop_(?:users|products|orders|order_items|reviews|requests|auth_attempts|admin_attempts))\\b/gi,
+      (_,verb,table)=>verb+' matreshka_private.'+table)
+    .replace(/nextval\\('shop_product_ids'\\)/gi,"nextval('matreshka_private.shop_product_ids')");
+  if(typeof sql==='string')return qualify(sql);
+  return sql&&typeof sql==='object'&&typeof sql.text==='string'
+    ?{...sql,text:qualify(sql.text)}:sql;
+}
+const pool={
+  query(sql,params){return driver.query(isolatedSql(sql),params);},
+  async connect(){
+    const client=await driver.connect();
+    return {
+      query(sql,params){return client.query(isolatedSql(sql),params);},
+      release(force){client.release(force);}
+    };
+  },
+  end(){return driver.end();}
+};
 let readyPromise;
 const ddl = [
   "CREATE SEQUENCE IF NOT EXISTS shop_product_ids START 100000",
@@ -46,9 +72,11 @@ async function bootstrap() {
     // Transaction-scoped advisory lock works with pooled PostgreSQL connections.
     await c.query('SELECT pg_advisory_xact_lock(20261111,20)');
     if (externallyManaged) {
-      const schema = (await c.query('SELECT current_schema() AS active_schema')).rows[0].active_schema;
-      if (schema !== 'matreshka_private') {
-        throw new Error('Database connection is not using the isolated matreshka_private schema');
+      const found=(await c.query("SELECT to_regclass('matreshka_private.shop_products') IS NOT NULL AS present")).rows[0].present;
+      if(!found)throw new Error('Wrong PostgreSQL connection: isolated matreshka_private schema is missing');
+      const expected='https://odaitemhtecieklsbnpd.supabase.co';
+      if(process.env.SUPABASE_URL && process.env.SUPABASE_URL!==expected){
+        throw new Error('Supabase integration points to another project');
       }
     } else {
       for (const sql of ddl) await c.query(sql);
