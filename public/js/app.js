@@ -312,19 +312,24 @@ function onAuthSuccess(data) {
 }
 
 async function logout() {
-  try { await api('/auth/logout', { method: 'POST' }); } catch (e) { console.warn(e.message); }
-  State.token = null; State.user = null;
-  localStorage.removeItem('mtr_token'); localStorage.removeItem('mtr_user');
+  if(State.localUser&&!Shop.customerAccountsEnabled){
+    exitLocalProfile();
+  }else{
+    try { await api('/auth/logout', { method: 'POST' }); } catch (e) { console.warn(e.message); }
+    State.token = null; State.user = null;
+    localStorage.removeItem('mtr_token'); localStorage.removeItem('mtr_user');
+  }
   renderAuthUI();
-  toast('Вы вышли из аккаунта');
+  toast('Вы вышли из профиля');
   navigate('#/');
 }
 
 function renderAuthUI() {
-  const authed = !!State.token;
+  const local=!!State.localUser&&!Shop.customerAccountsEnabled;
+  const authed = !!State.token&&Shop.customerAccountsEnabled || local;
   $('#authButtons').hidden = authed;
   $('#userMenu').hidden = !authed;
-  if (authed) $('#userName').textContent = State.user?.name?.split(' ')[0] || 'Кабинет';
+  if (authed) $('#userName').textContent = (local?State.localUser?.name:State.user?.name)?.split(' ')[0] || 'Кабинет';
 }
 
 // ============================================================
@@ -1000,12 +1005,13 @@ function renderPrivacy() {
 // ============================================================
 async function renderAccount(_m, params) {
   const signedIn=!!State.token&&Shop.customerAccountsEnabled;
+  const localSignedIn=!!State.localUser&&!Shop.customerAccountsEnabled;
   const tab=params.get('tab')||(signedIn?'orders':'fav');
   if(!signedIn&&!['fav','cart'].includes(tab)){navigate('#/account?tab=fav');return;}
   app.innerHTML = `
     <div class="container page-head">
-      <h1>${signedIn?'Личный кабинет':'Мой профиль'}</h1>
-      <p style="color:var(--ink-soft)">${signedIn?esc(State.user?.name||'Покупатель')+' · '+esc(State.user?.phone||''):'Ваши сохранённые товары на этом устройстве'}</p>
+      <h1>${signedIn||localSignedIn?'Личный кабинет':'Мой профиль'}</h1>
+      <p style="color:var(--ink-soft)">${signedIn?esc(State.user?.name||'Покупатель')+' · '+esc(State.user?.phone||''):localSignedIn?esc(State.localUser.name)+' · профиль на этом устройстве':'Ваши сохранённые товары на этом устройстве'}</p>
     </div>
     <div class="container section" style="padding-top:16px">
       <div class="account">
@@ -1016,7 +1022,7 @@ async function renderAccount(_m, params) {
           ${signedIn?`<button data-tab="address" class="${tab==='address'?'active':''}">📍 Адреса доставки</button>`:''}
         </nav>
         <div id="accountBody"></div>
-        ${signedIn?'':`<p class="local-profile-hint">Избранное и корзина сохраняются только в этом браузере. Для синхронизации между устройствами позже будет доступен вход в аккаунт.</p>`}
+        ${signedIn?'':`<p class="local-profile-hint">${localSignedIn?'Вы вошли в локальный профиль.':'Можно создать локальный профиль через кнопку «Регистрация» вверху сайта.'} Корзина и избранное сохраняются только на этом устройстве. Войти с другого телефона пока нельзя.</p>`}
       </div>
     </div>`;
   $$('.account__nav button').forEach(b => b.addEventListener('click', () => navigate('#/account?tab=' + b.dataset.tab)));
@@ -1492,6 +1498,9 @@ async function initializeShop(){
     if(!Shop.customerAccountsEnabled&&State.token){
       State.token=null;State.user=null;
       localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');
+    }
+    if(Shop.customerAccountsEnabled&&State.localUser){
+      exitLocalProfile();
     }
     renderAuthUI();
     if(Shop.customerAccountsEnabled&&State.token){
