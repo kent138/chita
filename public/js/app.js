@@ -121,19 +121,14 @@ $('#modalOverlay').addEventListener('click', e => { if (e.target.id === 'modalOv
 function authModal(tab = 'login') {
   if(!Shop.customerAccountsEnabled){
     openModal(`
-      <div class="local-profile-intro">
-        <div class="local-profile-intro__icon">♡</div>
-        <h2>Личный кабинет скоро появится</h2>
-        <p>Регистрация и вход по телефону пока недоступны: для хранения данных покупателей необходимо сначала настроить защищённую базу в России.</p>
-        <p>А пока можно добавлять товары в <b>корзину</b> и ставить <b>лайки</b>. Они сохраняются в этом браузере, даже после закрытия сайта.</p>
-        <div class="local-profile-intro__actions">
-          <button class="btn btn--primary" id="openGuestProfile">Моё избранное</button>
-          <button class="btn btn--ghost" id="openGuestCart">Открыть корзину</button>
-        </div>
-        <p class="form-hint">Пароль и телефон пока вводить не нужно. Сохранённые товары на другое устройство не переносятся.</p>
-      </div>`);
-    $('#openGuestProfile').addEventListener('click',()=>{closeModal();navigate('#/account?tab=fav');});
-    $('#openGuestCart').addEventListener('click',()=>{closeModal();openCart();});
+      <div class="modal__tabs">
+        <button data-tab="login" class="${tab==='login'?'active':''}">Вход</button>
+        <button data-tab="register" class="${tab==='register'?'active':''}">Регистрация</button>
+      </div>
+      <div id="authFormWrap"></div>
+      <p class="local-auth-note">Профиль работает <b>на этом устройстве</b>. Телефон и адрес не нужны, пароль не передаётся на сервер. На другом телефоне войти пока нельзя, а после очистки браузера данные могут исчезнуть.</p>`);
+    $$('.modal__tabs button').forEach(b=>b.addEventListener('click',()=>renderLocalAuthForm(b.dataset.tab)));
+    renderLocalAuthForm(tab);
     return;
   }
   openModal(`
