@@ -41,6 +41,7 @@ async function api(path, { method = 'GET', body, admin = false } = {}) {
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 const money = n => new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
+const formatShopDate = d => { const s=String(d||''); const x=new Date(s); return Number.isNaN(x.getTime()) ? s : x.toLocaleString('ru-RU'); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 
 function toast(msg, type = '') {
@@ -726,26 +727,14 @@ function renderBlog() {
 // ============================================================
 function renderSale() {
   app.innerHTML = `
-    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Акции</div><h1>Акции и скидки</h1></div>
+    <div class="container page-head"><div class="breadcrumbs"><a href="#/" data-link>Главная</a> / Специальные предложения</div><h1>Специальные предложения</h1></div>
     <div class="container section" style="padding-top:16px">
-      <div class="subscribe" style="background:linear-gradient(135deg,var(--gold),var(--terra));margin-bottom:24px">
-        <h2>🎁 Промокоды месяца</h2>
-        <p style="margin-bottom:20px">Введите промокод при оформлении заказа</p>
-        <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
-          <div style="background:rgba(255,255,255,.2);padding:18px 28px;border-radius:14px"><b style="font-size:24px;font-family:var(--serif)">СИБИРЬ10</b><br>−10% на весь заказ</div>
-          <div style="background:rgba(255,255,255,.2);padding:18px 28px;border-radius:14px"><b style="font-size:24px;font-family:var(--serif)">ЧИТА15</b><br>−15% при заказе от души</div>
-        </div>
-      </div>
       <div class="info-block">
-        <h2>Постоянные предложения</h2>
-        <ul>
-          <li>🚚 <b>Бесплатный самовывоз</b> из мастерской на ул. Бутина, 44.</li>
-          <li>🎀 <b>Подарочная упаковка</b> всего за 150 ₽ — красиво и с душой.</li>
-          <li>📦 <b>Скидка оптовикам</b> — специальные цены для магазинов и мастерских. <a href="#/b2b" data-link style="color:var(--terra)">Подробнее →</a></li>
-          <li>💛 <b>Кэшбэк отзывами</b> — оставьте отзыв и получите бонус на следующий заказ.</li>
-        </ul>
+        <h2>Уточняйте действующие акции в магазине</h2>
+        <p>Доступность скидок и оптовых условий уточняйте непосредственно у магазина «Матрёшка». На сайте показываются актуальные цены каталога, без автоматических промокодов.</p>
+        <p>Адрес: Чита, ул. Бутина, 44, пом. 1. Телефон: <a href="tel:+79143592767">+7 914 359-27-67</a>.</p>
       </div>
-      <div style="text-align:center;margin-top:30px"><button class="btn btn--primary btn--lg" onclick="navigate('#/catalog')">За покупками →</button></div>
+      <div style="text-align:center;margin-top:30px"><button class="btn btn--primary btn--lg" onclick="navigate('#/catalog')">Перейти в каталог</button></div>
     </div>`;
 }
 
@@ -846,7 +835,7 @@ async function renderAccount(_m, params) {
           <span class="order-card__id">Заказ №${o.id}</span>
           <span class="status-pill status-${esc(o.status.replace(/\s/g,''))}">${esc(o.status)}</span>
         </div>
-        <div class="order-card__meta">${new Date(o.created_at+' UTC').toLocaleString('ru-RU')} · ${esc(o.delivery_method)} · ${esc(o.payment_method)}</div>
+        <div class="order-card__meta">${formatShopDate(o.created_at)} · ${esc(o.delivery_method)} · ${esc(o.payment_method)}</div>
         <div class="order-card__items">${o.items.map(i=>`${esc(i.product_name)} × ${i.quantity}`).join('<br>')}</div>
         <div style="text-align:right"><b class="card__price">${money(o.total_price)}</b></div>
       </div>`).join('') : '<div class="empty">У вас пока нет заказов.<br><button class="btn btn--primary" style="margin-top:14px" onclick="navigate(\'#/catalog\')">За покупками</button></div>';
@@ -1054,7 +1043,7 @@ async function loadOrders(first) {
         👤 <b>${esc(o.customer_name)}</b> · 📞 <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a><br>
         🚚 ${esc(o.delivery_method)}${o.delivery_address?' — '+esc(o.delivery_address):''}<br>
         💳 ${esc(o.payment_method)} · ${esc(o.payment_status||'Ожидает оплаты')}${o.gift_wrap?' · 🎁 подарочная упаковка':''}${o.promo_code?' · промокод: '+esc(o.promo_code):''}<br>
-        🕒 ${new Date(o.created_at+' UTC').toLocaleString('ru-RU')}
+        🕒 ${formatShopDate(o.created_at)}
         ${o.comment?`<br>💬 <i>${esc(o.comment)}</i>`:''}
       </div>
       <div class="order-card__items">${o.items.map(i=>`• ${esc(i.product_name)} — ${i.quantity} × ${money(i.product_price)}`).join('<br>')}</div>
@@ -1115,7 +1104,7 @@ $('#searchInput').addEventListener('input', e => {
   }, 200);
 });
 $('#searchInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { navigate('#/catalog'); $('#searchSuggest').innerHTML = ''; e.target.blur(); }
+  if (e.key === 'Enter') { const term=e.target.value.trim(); navigate('#/catalog'+(term?'?search='+encodeURIComponent(term):'')); $('#searchSuggest').innerHTML = ''; e.target.blur(); }
 });
 document.addEventListener('click', e => {
   if (!e.target.closest('.search')) $('#searchSuggest').innerHTML = '';
@@ -1167,7 +1156,7 @@ async function initializeShop(){
     Shop.databaseReady=!!cfg.databaseReady;
     Shop.acceptingOrders=!!cfg.acceptingOrders;
     Shop.adminConfigured=!!cfg.adminConfigured;
-    document.body.classList.toggle('v2-preview',!Shop.acceptingOrders);
+    document.body.classList.toggle('v2-preview',!Shop.databaseReady);
     $('#shopNoticeTitle').textContent=Shop.acceptingOrders?'Матрёшка — магазин тканей и фурнитуры':'Матрёшка 2.0 — подготовка к запуску';
     $('#shopNoticeText').textContent=Shop.acceptingOrders
       ?'Каталог и оформление заказов работают. Оплата согласуется с магазином.'
@@ -1175,11 +1164,12 @@ async function initializeShop(){
         ?'База товаров и личные кабинеты подключены. Приём заказов пока выключен.'
         :'Каталог работает. Оформление заказов включим после подключения отдельной базы данных.';
     const adminReady=Shop.databaseReady&&Shop.adminConfigured;
+    $('#menuEditCatalog').hidden=!adminReady;
     $('#menuModeration').hidden=!adminReady;
     $('#menuRequests').hidden=!adminReady;
     $('#menuReviews').hidden=!adminReady;
     renderAuthUI();
-    if(Shop.acceptingOrders&&State.token){
+    if(Shop.databaseReady&&State.token){
       try{const me=await api('/auth/me');State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));}
       catch{State.token=null;State.user=null;localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');}
       renderAuthUI();
