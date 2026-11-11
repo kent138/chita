@@ -1092,7 +1092,9 @@ async function loadOrders(first) {
       <div class="order-card__meta">
         👤 <b>${esc(o.customer_name)}</b> · 📞 <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a><br>
         🚚 ${esc(o.delivery_method)}${o.delivery_address?' — '+esc(o.delivery_address):''}<br>
-        💳 ${esc(o.payment_method)} · ${esc(o.payment_status||'Ожидает оплаты')}${o.gift_wrap?' · 🎁 подарочная упаковка':''}${o.promo_code?' · промокод: '+esc(o.promo_code):''}<br>
+        💳 ${esc(o.payment_method)} · <label>Оплата: <select class="status-select" aria-label="Статус оплаты заказа №${o.id}" onchange="changePaymentStatus(${o.id},this.value)">
+          ${['Ожидает оплаты','Оплачен','Возврат'].map(x=>`<option value="${x}" ${x===o.payment_status?'selected':''}>${x}</option>`).join('')}
+        </select></label><br>
         🕒 ${formatShopDate(o.created_at)}
         ${o.comment?`<br>💬 <i>${esc(o.comment)}</i>`:''}
       </div>
@@ -1105,6 +1107,13 @@ window.changeOrderStatus = async (id, status) => {
   try { await api('/admin/orders/' + id + '/status', { method: 'PUT', admin: true, body: { status } });
     toast('Статус заказа №' + id + ' → ' + status, 'success'); loadOrders(true); }
   catch (err) { toast(err.message, 'error'); }
+};
+
+window.changePaymentStatus=async(id,status)=>{
+  try {
+    await api('/admin/orders/'+id+'/payment',{method:'PUT',admin:true,body:{status}});
+    toast('Статус оплаты обновлён','success');loadOrders(true);
+  } catch(err) {toast(err.message,'error');loadOrders(true);}
 };
 
 // Удаление заказов отключено — история продаж должна сохраняться.
