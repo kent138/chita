@@ -627,3 +627,6 @@ img { max-width: 100%; display: block; }
  .hero-v2-tile figcaption {font-size:11px;padding:20px 8px 7px;}
  .v2-info-panel {gap:20px;}
 }
+
+/* Respect semantic hidden state in catalog pagination. */
+.v2-preview #catMore[hidden] { display: none !important; }
