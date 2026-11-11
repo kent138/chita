@@ -11,6 +11,9 @@ function sellerReady(){
   const contact=String(process.env.SELLER_CONTACT||'').trim();
   return name.length>5 && ([13,15].includes(ogrn.length) || [10,12].includes(inn.length)) && address.length>10 && contact.length>5;
 }
+function personalDataEnabled(){
+  return process.env.DATA_LOCALIZATION_REVIEWED==='1' && sellerReady();
+}
 function ordersEnabled(){
   return process.env.SHOP_OPEN==='1' && process.env.DATA_LOCALIZATION_REVIEWED==='1' && String(process.env.JWT_SECRET||'').length>=32 && String(process.env.ADMIN_PASSWORD||'').length>=12 && sellerReady();
 }
@@ -33,7 +36,7 @@ function register(app){
       const readyForOrders=ordersEnabled();
       res.set('Cache-Control','no-store');
       res.json({version:'2.1',databaseReady:true,acceptingOrders:readyForOrders,
-        adminConfigured:adminOk && secretOk,sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
+        adminConfigured:adminOk && secretOk,customerAccountsEnabled:personalDataEnabled(),sellerReady:sellerReady(),seller:sellerReady()?{name:process.env.SELLER_LEGAL_NAME,ogrn:process.env.SELLER_OGRN||'',inn:process.env.SELLER_INN||'',address:process.env.SELLER_LEGAL_ADDRESS,contact:process.env.SELLER_CONTACT}:null,paymentMethods:['При получении','Согласовать с магазином'],
         paymentsOnline:false,shippingPrice:'Уточняется магазином при подтверждении'});
     }catch(e){
       console.error('[SHOP-BOOT]',e.message);
@@ -43,6 +46,25 @@ function register(app){
   app.use('/api',async(req,res,next)=>{
     try{await ready();next();}
     catch(e){console.error('[SHOP-DATABASE]',e.message);res.status(503).json({error:'База магазина временно недоступна'});}
+  });
+  // Buyers' personal data must stay off until the merchant has confirmed
+  // a lawful hosting/location and approved the legal identity and privacy policy.
+  const noPersonalData=(req,res)=>res.status(503).json({
+    error:'Регистрация и приём персональных данных покупателей пока отключены.'
+  });
+  app.use('/api/auth',(req,res,next)=>{
+    if(!personalDataEnabled())return noPersonalData(req,res);
+    next();
+  });
+  for(const route of ['/api/b2b','/api/feedback','/api/subscribe']){
+    app.post(route,(req,res,next)=>{
+      if(!personalDataEnabled())return noPersonalData(req,res);
+      next();
+    });
+  }
+  app.post('/api/products/:id/reviews',(req,res,next)=>{
+    if(!personalDataEnabled())return noPersonalData(req,res);
+    next();
   });
   auth.register(app);
   catalog.register(app);
