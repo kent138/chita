@@ -66,10 +66,7 @@ function register(app){
   if(req.query.inStock==='1')conditions.push('stock>0');
   if(req.query.popular==='1')conditions.push('is_popular=true');
   if(req.query.search)add("(name ILIKE ? OR description ILIKE ?)",'%'+String(req.query.search).slice(0,150).replace(/[%_]/g,'\\$&')+'%');
-  // The optional search expression needs the SAME parameter on both sides.
-  const where=conditions.join(' AND ');
-  const searchFixed=where.replace(/(\$\d+ OR description ILIKE) \$(\d+)/g,'$1 $2');
-  const whereFinal=searchFixed;
+  const whereFinal=conditions.join(' AND ');
   const limitPresent=req.query.limit!==undefined;
   const page=Math.max(1,Math.floor(Number(req.query.page)||1));
   const limit=Math.min(48,Math.max(1,Math.floor(Number(req.query.limit)||24)));
