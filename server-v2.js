@@ -26,11 +26,11 @@ if(process.env.DATABASE_URL){
       adminConfigured:false,paymentsOnline:false,
       message:'Каталог работает. Для оформления заказов нужна отдельная PostgreSQL-база.'});
   });
-  app.use('/api/admin',(req,res,next)=>{
-    if(String(process.env.ADMIN_PASSWORD||'').length<12)
-      return res.status(503).json({error:'Смените пароль администратора в Vercel на пароль длиной минимум 12 символов'});
-    next();
-  });
+  // No transactional DB means no durable brute-force protection. Fail closed:
+  // never expose the legacy direct-password admin endpoints.
+  app.use('/api/admin',(req,res)=>res.status(503).json({
+    error:'Админ-панель будет доступна после подключения отдельной защищённой PostgreSQL-базы.'
+  }));
   require('./v2-api')(app);
   const disabled=(req,res)=>res.status(503).json({
     error:'Оформление заказов и личный кабинет будут включены после подключения защищённой базы данных.'
