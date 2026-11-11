@@ -20,6 +20,7 @@ const storedLikes=storedJSON(currentLocalKeys?.favorites||'mtr_fav',[]);
 const State = {
   token: localStorage.getItem('mtr_token') || null,
   user: storedJSON('mtr_user',null),
+  cloudSession:sessionStorage.getItem('mtr_cloud_api_session')||null,
   localUser:currentLocalUser,
   cart: Array.isArray(storedCart)?storedCart.filter(i=>i&&Number.isSafeInteger(i.id)&&i.id>0&&Number.isFinite(Number(i.price))&&Number(i.price)>=0&&Number.isSafeInteger(i.quantity)&&i.quantity>0).slice(0,150):[],
   favorites: Array.isArray(storedLikes)?[...new Set(storedLikes.map(Number).filter(id=>Number.isSafeInteger(id)&&id>0))].slice(0,1000):[],
@@ -28,19 +29,27 @@ const State = {
   moderationTimer: null         // таймер polling для панели модерации
 };
 
-const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, customerAccountsEnabled:false, cloudAccountsEnabled:false, seller:null };
+const Shop = { databaseReady:false, acceptingOrders:false, adminConfigured:false, customerAccountsEnabled:false, cloudAccountsEnabled:false, cloudAccountApiBase:'', seller:null };
 const CatalogCache=new Map();
 
 // -------------------- API-обёртка --------------------
 async function api(path, { method = 'GET', body, admin = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  // Session and administrator authentication use HttpOnly same-site cookies.
-  // Passwords are not transmitted with each API call.
-
+  // Russian free-tier PHP identity endpoints are called DIRECTLY from the
+  // shopper's browser. No name, password or bearer token passes via Vercel.
+  const external=path.startsWith('/cloud-auth/')&&!!Shop.cloudAccountApiBase;
+  const action=external?path.slice('/cloud-auth/'.length):'';
+  if(external&&!['register','login','logout','me','favorites','cart'].includes(action))
+    throw new Error('Неверный запрос аккаунта');
+  const url=external
+    ?Shop.cloudAccountApiBase+(Shop.cloudAccountApiBase.includes('?')?'&':'?')+'action='+encodeURIComponent(action)
+    :'/api'+path;
+  if(external&&State.cloudSession)headers.Authorization='Bearer '+State.cloudSession;
   let res;
   try {
-    res = await fetch('/api' + path, {
-      method, headers, credentials: 'same-origin', body: body ? JSON.stringify(body) : undefined
+    res = await fetch(url, {
+      method,headers,credentials:external?'omit':'same-origin',
+      body:body?JSON.stringify(body):undefined
     });
   } catch (e) {
     // fetch падает, если сервер не запущен или недоступен
@@ -205,7 +214,7 @@ function renderCloudAuthForm(tab){
       const body={username:f.get('username'),password:f.get('password')};
       if(isRegister){body.passwordRepeat=f.get('passwordRepeat');body.consent=f.get('consent')==='on';}
       const data=await api('/cloud-auth/'+(isRegister?'register':'login'),{method:'POST',body});
-      await activateCloudProfile(data.user,true);
+      await activateCloudProfile(data.user,true,data.token);
       closeModal();
       renderAuthUI();
       toast('Добро пожаловать! Корзина и избранное синхронизированы.','success');
@@ -230,7 +239,7 @@ async function productsForCloudCart(remote){
   }
   return found;
 }
-async function activateCloudProfile(user,mergeGuest){
+async function activateCloudProfile(user,mergeGuest,sessionToken){
   const guestCart=mergeGuest?State.cart:[],guestLikes=mergeGuest?State.favorites:[];
   const remoteLikes=Array.isArray(user.favorites)?user.favorites.map(Number):[];
   const remoteCart=Array.isArray(user.cart)?user.cart:[];
@@ -256,6 +265,10 @@ async function activateCloudProfile(user,mergeGuest){
     .filter(id=>Number.isSafeInteger(id)&&id>0).slice(0,1000);
   State.localUser=null;
   State.token='cloud';State.user=user;
+  if(Shop.cloudAccountApiBase&&sessionToken){
+    State.cloudSession=sessionToken;
+    sessionStorage.setItem('mtr_cloud_api_session',sessionToken);
+  }
   localStorage.setItem('mtr_token','cloud');
   localStorage.setItem('mtr_user',JSON.stringify(user));
   if(mergeGuest){
@@ -437,6 +450,8 @@ async function logout() {
     try{await api('/cloud-auth/logout',{method:'POST'});}
     catch(e){console.warn('Не удалось завершить облачную сессию',e.message);}
     State.token=null;State.user=null;
+    State.cloudSession=null;
+    sessionStorage.removeItem('mtr_cloud_api_session');
     State.cart=storedJSON('mtr_cart',[]);
     State.favorites=storedJSON('mtr_fav',[]);
     updateCartBadge();updateFavBadge();
@@ -1618,6 +1633,7 @@ async function initializeShop(){
     Shop.adminConfigured=!!cfg.adminConfigured;
     Shop.customerAccountsEnabled=!!cfg.customerAccountsEnabled;
     Shop.cloudAccountsEnabled=!!cfg.cloudAccountsEnabled;
+    Shop.cloudAccountApiBase=String(cfg.cloudAccountApiBase||'');
     Shop.seller=cfg.seller||null;
     document.body.classList.toggle('v2-preview',!Shop.acceptingOrders);
     const adminReady=Shop.databaseReady&&Shop.adminConfigured;
