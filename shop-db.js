@@ -86,6 +86,18 @@ const ddl = [
 ];
 
 async function sourceCatalog() {
+  // Opt-in backup of PUBLIC merchandise only, read from the live store on
+  // 15 November 2026. Seed a brand-new Russian DB without modifying Supabase
+  // or requiring a Vercel Blob write token in the new hosting environment.
+  if(!externallyManaged && process.env.SEED_CATALOG_SNAPSHOT==='1'){
+    const products=JSON.parse(readFileSync(
+      path.join(__dirname,'migration','catalog-snapshot-2026-11-15.json'),'utf8'));
+    if(!Array.isArray(products)||products.length!==43||
+       products.some(p=>!Number.isSafeInteger(p.id)||!Array.isArray(p.images)||
+         p.images.length<1||!p.images.every(u=>typeof u==='string'&&u.startsWith('https://'))))
+      throw new Error('The approved 43-item merchandise snapshot is incomplete');
+    return products;
+  }
   const object = await get('v2/catalog.json',{access:'public'});
   if(!object || !object.stream) throw new Error('Исходный каталог V2 недоступен');
   const products = JSON.parse(await new Response(object.stream).text());
