@@ -51,8 +51,20 @@ function adminAuth(req,res,next){
   if(!decodeAdmin(req))return res.status(401).json({error:'Требуется вход администратора'});
   next();
 }
-const userShape=x=>({id:Number(x.id),name:x.name,phone:x.phone,addresses:x.addresses||[],favorites:x.favorites||[],createdAt:x.created_at});
+const userShape=x=>({id:Number(x.id),name:x.name,phone:x.phone,addresses:x.addresses||[],favorites:x.favorites||[],cart:Array.isArray(x.cart)?x.cart:[],createdAt:x.created_at});
 function safeText(x,max=120){return String(x||'').trim().slice(0,max);}
+function validateCart(items){
+  if(!Array.isArray(items)||items.length>150)throw error('Некорректная корзина');
+  const byId=new Map();
+  for(const item of items){
+    if(!item||typeof item!=='object'||!Number.isSafeInteger(item.id)||item.id<=0||
+      !Number.isSafeInteger(item.quantity)||item.quantity<=0||item.quantity>100)
+      throw error('Некорректное количество товара');
+    byId.set(item.id,Math.max(byId.get(item.id)||0,item.quantity));
+  }
+  return [...byId].map(([id,quantity])=>({id,quantity}));
+}
+
 function clientId(req,kind){
   const ip=String(req.headers['x-forwarded-for']||req.ip||'').split(',')[0].trim().slice(0,120);
   return crypto.createHash('sha256').update(kind+':'+ip+':'+secret()).digest('hex');
@@ -142,7 +154,7 @@ function register(app){
     const hash=await bcrypt.hash(pwd,12);
     let u;
     try{
-      u=(await pool.query('INSERT INTO shop_users(name,phone,password_hash) VALUES($1,$2,$3) RETURNING id,name,phone,addresses,favorites,created_at',[name,phone,hash])).rows[0];
+      u=(await pool.query('INSERT INTO shop_users(name,phone,password_hash) VALUES($1,$2,$3) RETURNING id,name,phone,addresses,favorites,cart,created_at',[name,phone,hash])).rows[0];
     }catch(e){if(e.code==='23505')throw error('Этот телефон уже зарегистрирован',409);throw e;}
     await succeeded(id);issueUser(res,u);res.status(201).json({user:userShape(u)});
   }));
@@ -157,7 +169,7 @@ function register(app){
   }));
   app.post('/api/auth/logout',(req,res)=>{clearCookie(res,USER_COOKIE);res.json({ok:true});});
   app.get('/api/auth/me',userAuth,wrap(async(req,res)=>{
-    const u=(await pool.query('SELECT id,name,phone,addresses,favorites,created_at FROM shop_users WHERE id=$1',[req.userId])).rows[0];
+    const u=(await pool.query('SELECT id,name,phone,addresses,favorites,cart,created_at FROM shop_users WHERE id=$1',[req.userId])).rows[0];
     if(!u)throw error('Пользователь не найден',401);
     res.json(userShape(u));
   }));
@@ -167,6 +179,15 @@ function register(app){
     const favorites=[...new Set(arr.map(Number))];
     await pool.query('UPDATE shop_users SET favorites=$1::jsonb WHERE id=$2',[JSON.stringify(favorites),req.userId]);
     res.json({favorites});
+  }));
+  // Persist only public merchandise IDs and quantities in the Russian database.
+  // Product prices and availability always come from the trusted catalogue.
+  app.put('/api/auth/cart',userAuth,wrap(async(req,res)=>{
+    const cart=validateCart(req.body?.cart);
+    const r=await pool.query('UPDATE shop_users SET cart=$1::jsonb WHERE id=$2 RETURNING id',
+      [JSON.stringify(cart),req.userId]);
+    if(!r.rowCount)throw error('Аккаунт не найден',401);
+    res.json({cart});
   }));
   app.put('/api/auth/addresses',userAuth,wrap(async(req,res)=>{
     const a=req.body?.addresses;
@@ -192,4 +213,4 @@ function register(app){
   app.post('/api/admin/verify',adminAuth,(req,res)=>res.json({ok:true}));
   app.post('/api/admin/logout',adminAuth,(req,res)=>{clearCookie(res,ADMIN_COOKIE);res.json({ok:true});});
 }
-module.exports={register,userAuth,adminAuth,decodeUser,decodeAdmin,normPhone,safeText,wrap,error,userShape};
+module.exports={register,userAuth,adminAuth,decodeUser,decodeAdmin,normPhone,safeText,wrap,error,userShape,validateCart};
