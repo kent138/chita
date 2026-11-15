@@ -87,6 +87,10 @@ function localStorageKeys(){
     if(/^[a-f0-9-]{36}$/i.test(id))
       return {cart:'mtr_cloud_cart_'+id,favorites:'mtr_cloud_fav_'+id};
   }
+  if(Shop.customerAccountsEnabled&&State.token==='session'&&Number.isSafeInteger(Number(State.user?.id))&&Number(State.user?.id)>0){
+    const id=String(State.user.id);
+    return {cart:'mtr_account_cart_'+id,favorites:'mtr_account_fav_'+id};
+  }
   return State.localUser&&window.LocalAccounts
     ?window.LocalAccounts.keys(State.localUser)
     :{cart:'mtr_cart',favorites:'mtr_fav'};
@@ -101,6 +105,12 @@ function saveCart() {
       api('/cloud-auth/cart',{method:'PUT',body:{cart}})
     );
     cartUpload.catch(()=>toast('Корзина сохранена на устройстве, но синхронизация пока недоступна','error'));
+  }else if(Shop.customerAccountsEnabled&&State.token==='session'){
+    const cart=State.cart.map(i=>({id:Number(i.id),quantity:Number(i.quantity)}));
+    cartUpload=cartUpload.catch(()=>{}).then(()=>
+      api('/auth/cart',{method:'PUT',body:{cart}})
+    );
+    cartUpload.catch(()=>toast('Не удалось сохранить корзину на сервере','error'));
   }
 }
 function saveFav() {
@@ -278,6 +288,44 @@ async function activateCloudProfile(user,mergeGuest,sessionToken){
   saveCart();saveFav();updateCartBadge();updateFavBadge();
 }
 
+// Native accounts live on the same Russian PostgreSQL server as inventory and
+// orders. Only IDs and quantities are persisted; prices are refreshed from the
+// trusted catalogue before displaying saved items on another device.
+async function restoreNativeCart(remote,guest){
+  const quantities=new Map();
+  for(const item of [...remote,...guest]){
+    const id=Number(item?.id),qty=Number(item?.quantity);
+    if(Number.isSafeInteger(id)&&id>0&&Number.isSafeInteger(qty)&&qty>0){
+      const previous=quantities.get(id)||0;
+      quantities.set(id,Math.min(100,previous+qty));
+    }
+  }
+  const productMap=await productsForCloudCart([...quantities].map(([id,quantity])=>({id,quantity})));
+  return [...quantities].flatMap(([id,quantity])=>{
+    const p=productMap.get(id);
+    if(!p||Number(p.stock)<=0)return [];
+    return [{id,name:p.name,price:Number(p.price),image:p.images?.[0]||'',
+      stock:p.stock,quantity:Math.min(quantity,Number(p.stock))}];
+  });
+}
+async function activateNativeProfile(user,mergeGuest){
+  const guestCart=mergeGuest?State.cart:[],guestLikes=mergeGuest?State.favorites:[];
+  const remoteCart=Array.isArray(user.cart)?user.cart:[];
+  const cart=await restoreNativeCart(remoteCart,guestCart);
+  const remoteLikes=Array.isArray(user.favorites)?user.favorites.map(Number):[];
+  const favorites=[...new Set([...remoteLikes,...guestLikes.map(Number)])]
+    .filter(id=>Number.isSafeInteger(id)&&id>0).slice(0,1000);
+  State.token='session';State.user=user;State.localUser=null;
+  State.cart=cart;State.favorites=favorites;
+  localStorage.setItem('mtr_token','session');
+  localStorage.setItem('mtr_user',JSON.stringify(user));
+  if(mergeGuest){
+    localStorage.removeItem('mtr_cart');
+    localStorage.removeItem('mtr_fav');
+  }
+  saveCart();saveFav();updateCartBadge();updateFavBadge();
+}
+
 function renderLocalAuthForm(tab){
   $$('.modal__tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   const wrap=$('#authFormWrap');
@@ -412,7 +460,7 @@ async function handleLogin(e) {
   try {
     const data = await api('/auth/login', { method: 'POST',
       body: { phone: f.get('phone'), password: f.get('password') } });
-    onAuthSuccess(data);
+    await onAuthSuccess(data);
   } catch (err) { showAuthErr(err.message); }
 }
 
@@ -425,24 +473,17 @@ async function handleRegister(e) {
     const data = await api('/auth/register', { method: 'POST', body: {
       name: f.get('name'), phone: f.get('phone'),
       password: f.get('password'), passwordRepeat: f.get('passwordRepeat'), consent: true } });
-    onAuthSuccess(data);
+    await onAuthSuccess(data);
   } catch (err) { showAuthErr(err.message); }
 }
 
-function onAuthSuccess(data) {
-  State.token = 'session'; State.user = data.user;
-  localStorage.setItem('mtr_token', 'session');
-  localStorage.setItem('mtr_user', JSON.stringify(data.user));
+async function onAuthSuccess(data) {
+  await activateNativeProfile(data.user,true);
   closeModal();
   renderAuthUI();
-  toast('Добро пожаловать, ' + data.user.name + '!', 'success');
-  // Always reconcile local likes with this account, including new accounts
-  // whose server-side favorites are still empty.
-  api('/auth/me').then(me => {
-    const remote=Array.isArray(me.favorites)?me.favorites:[];
-    State.favorites=[...new Set([...State.favorites,...remote])];
-    saveFav();
-  }).catch(()=>{});
+  toast('Добро пожаловать, ' + data.user.name + '! Корзина сохранена в аккаунте.', 'success');
+  navigate('#/account?tab=fav');
+  router();
 }
 
 async function logout() {
@@ -461,9 +502,14 @@ async function logout() {
   }else if(State.localUser&&!Shop.customerAccountsEnabled){
     exitLocalProfile();
   }else{
+    if(Shop.customerAccountsEnabled&&State.token==='session')
+      await Promise.allSettled([cartUpload,likesUpload]);
     try { await api('/auth/logout', { method: 'POST' }); } catch (e) { console.warn(e.message); }
     State.token = null; State.user = null;
     localStorage.removeItem('mtr_token'); localStorage.removeItem('mtr_user');
+    State.cart=storedJSON('mtr_cart',[]);
+    State.favorites=storedJSON('mtr_fav',[]);
+    updateCartBadge();updateFavBadge();
   }
   renderAuthUI();
   toast('Вы вышли из профиля');
@@ -1675,14 +1721,7 @@ async function initializeShop(){
     if(Shop.customerAccountsEnabled&&State.token){
       try{
         const me=await api('/auth/me');
-        State.user=me;localStorage.setItem('mtr_user',JSON.stringify(me));
-        const remote=Array.isArray(me.favorites)?me.favorites.map(Number):[];
-        const merged=[...new Set([...remote,...State.favorites])];
-        if(merged.length!==State.favorites.length || merged.some(x=>!State.favorites.includes(x))){
-          State.favorites=merged;localStorage.setItem('mtr_fav',JSON.stringify(merged));
-          updateFavBadge();
-        }
-        if(merged.some(id=>!remote.includes(id)))saveFav();
+        await activateNativeProfile(me,false);
       }
       catch{State.token=null;State.user=null;localStorage.removeItem('mtr_token');localStorage.removeItem('mtr_user');}
       renderAuthUI();
