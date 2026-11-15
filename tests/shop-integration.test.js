@@ -73,6 +73,24 @@ if(!process.env.TEST_DATABASE_URL){
     assert.equal(me.body.phone,'79998887766');
     assert.equal(me.body.name,'Покупатель Тест');
   });
+  test('cart survives login from a second device and rejects invalid quantities',async()=>{
+    const saved=await ask('/api/auth/cart',{method:'PUT',headers:{Cookie:userCookie},
+      body:JSON.stringify({cart:[{id:2,quantity:3},{id:5,quantity:1},{id:2,quantity:2}]})});
+    assert.equal(saved.status,200);
+    assert.deepEqual(saved.body.cart,[{id:2,quantity:3},{id:5,quantity:1}]);
+    const newDevice=await ask('/api/auth/login',{method:'POST',
+      body:JSON.stringify({phone:'79998887766',password:'securePass123!'})});
+    assert.equal(newDevice.status,200);
+    const secondCookie=newDevice.cookie.split(';')[0];
+    const restored=await ask('/api/auth/me',{headers:{Cookie:secondCookie}});
+    assert.equal(restored.status,200);
+    assert.deepEqual(restored.body.cart,[{id:2,quantity:3},{id:5,quantity:1}]);
+    const invalid=await ask('/api/auth/cart',{method:'PUT',headers:{Cookie:secondCookie},
+      body:JSON.stringify({cart:[{id:2,quantity:-1}]})});
+    assert.equal(invalid.status,400);
+    const after=await ask('/api/auth/me',{headers:{Cookie:userCookie}});
+    assert.deepEqual(after.body.cart,[{id:2,quantity:3},{id:5,quantity:1}]);
+  });
   test('admin login and editing isolated stock',async()=>{
     const no=await ask('/api/admin/orders');
     assert.equal(no.status,401);
