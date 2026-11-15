@@ -1,0 +1,49 @@
+name: Isolated Russian PostgreSQL readiness tests
+
+on:
+  push:
+    branches: [prep-russian-postgres-cart-20261115]
+    paths:
+      - 'shop-db.js'
+      - 'shop-auth.js'
+      - 'public/js/app.js'
+      - 'tests/**'
+      - '.github/workflows/native-postgres-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: matreshka_ci
+          POSTGRES_USER: matreshka_test
+          POSTGRES_PASSWORD: throwaway_only_ci_2026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U matreshka_test -d matreshka_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Node dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Syntax checks
+        run: |
+          node --check shop-db.js
+          node --check shop-auth.js
+          node --check public/js/app.js
+      - name: Run all tests against throwaway PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql://matreshka_test:throwaway_only_ci_2026@127.0.0.1:5432/matreshka_ci
+        run: npm test
