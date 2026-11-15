@@ -12,8 +12,21 @@ function sellerReady(){
   const contact=String(process.env.SELLER_CONTACT||'').trim();
   return name.length>5 && ([13,15].includes(ogrn.length) || [10,12].includes(inn.length)) && address.length>10 && contact.length>5;
 }
+// The merchandise DB currently resides at Supabase eu-north-1 (Sweden).
+// Never accept customer PII or orders into this DB, even if a launch flag
+// is accidentally changed. An independent Russian account DB is separate.
+function catalogDatabaseCanStoreBuyerData(){
+  if(process.env.DB_SCHEMA_MANAGED==='1') return false;
+  const url=String(process.env.DATABASE_URL||process.env.POSTGRES_URL||'');
+  try {
+    const host=new URL(url).hostname.toLowerCase();
+    if(host.endsWith('.pooler.supabase.com')||host.endsWith('.supabase.co'))
+      return false;
+  }catch{}
+  return process.env.DATA_LOCALIZATION_REVIEWED==='1';
+}
 function personalDataEnabled(){
-  return process.env.DATA_LOCALIZATION_REVIEWED==='1' && sellerReady();
+  return catalogDatabaseCanStoreBuyerData() && sellerReady();
 }
 // The free Russian PHP/MySQL identity service is never enabled until its
 // HTTPS endpoint and handling of buyer data have been independently approved.
@@ -29,7 +42,9 @@ function externalAccountsUrl(){
   }catch{return '';}
 }
 function ordersEnabled(){
-  return process.env.SHOP_OPEN==='1' && process.env.DATA_LOCALIZATION_REVIEWED==='1' && String(process.env.JWT_SECRET||'').length>=32 && String(process.env.ADMIN_PASSWORD||'').length>=12 && sellerReady();
+  return catalogDatabaseCanStoreBuyerData() && process.env.SHOP_OPEN==='1' &&
+    String(process.env.JWT_SECRET||'').length>=32 &&
+    String(process.env.ADMIN_PASSWORD||'').length>=12 && sellerReady();
 }
 function register(app){
   app.use('/api',(req,res,next)=>{
