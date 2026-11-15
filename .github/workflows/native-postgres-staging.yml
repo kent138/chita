@@ -43,6 +43,30 @@ jobs:
           node --check shop-db.js
           node --check shop-auth.js
           node --check public/js/app.js
+      - name: Verify 43-product backup imports into a fresh isolated PostgreSQL
+        run: |
+          node <<'NODE'
+          'use strict';
+          const assert=require('node:assert/strict');
+          const {Pool}=require('pg');
+          (async()=>{
+            const credentials='postgresql://matreshka_test:throwaway_only_ci_2026@127.0.0.1:5432/';
+            const admin=new Pool({connectionString:credentials+'postgres'});
+            await admin.query('CREATE DATABASE matreshka_snapshot_ci');
+            await admin.end();
+            process.env.DATABASE_URL=credentials+'matreshka_snapshot_ci';
+            process.env.SEED_CATALOG_SNAPSHOT='1';
+            const {ready,pool}=require('./shop-db');
+            try{
+              await ready();
+              const r=await pool.query(
+                'SELECT count(*)::int AS products, sum(jsonb_array_length(images))::int AS photos FROM shop_products');
+              assert.equal(r.rows[0].products,43);
+              assert.equal(r.rows[0].photos,43);
+              console.log('PASS: 43 products and 43 photo URLs bootstrapped from snapshot');
+            }finally{await pool.end();}
+          })().catch(e=>{console.error(e);process.exitCode=1;});
+          NODE
       - name: Run all tests against throwaway PostgreSQL
         env:
           TEST_DATABASE_URL: postgresql://matreshka_test:throwaway_only_ci_2026@127.0.0.1:5432/matreshka_ci
