@@ -1,0 +1,49 @@
+name: Fix DADA npm ci lockfile (isolated branch)
+
+on:
+  push:
+    branches: [prep-russian-postgres-cart-20261115]
+    paths:
+      - '.github/workflows/fix-dada-npm-lock.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the isolated staging branch only
+        uses: actions/checkout@v4
+        with:
+          ref: prep-russian-postgres-cart-20261115
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate npm lockfile without running package scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Reproduce and validate DADA's npm ci command
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Commit ONLY package-lock.json to the staging branch
+        run: |
+          set -eu
+          test -s package-lock.json
+          git add -- package-lock.json
+          if git diff --cached --quiet; then
+            echo 'Lockfile is already committed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix DADA Cloud npm ci by committing reproducible package-lock.json'
+          git push origin HEAD:refs/heads/prep-russian-postgres-cart-20261115
+      - name: Preserve lockfile as downloadable artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dada-npm-lockfile-staging
+          path: package-lock.json
+          retention-days: 7
+          if-no-files-found: warn
