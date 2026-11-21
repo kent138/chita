@@ -8,6 +8,8 @@ on:
       - 'shop-auth.js'
       - 'public/js/app.js'
       - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/native-postgres-staging.yml'
   workflow_dispatch:
 
@@ -37,7 +39,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install Node dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Syntax checks
         run: |
           node --check shop-db.js
