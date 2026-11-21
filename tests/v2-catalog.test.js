@@ -27,6 +27,10 @@ Module._load = function(request,parent,isMain){
   }
   return originalLoad.call(this,request,parent,isMain);
 };
+// The Blob API is mocked in this suite. Signal that mocked Blob credentials
+// exist so the separate read-only DADA snapshot fallback is not selected.
+const originalBlobToken=process.env.BLOB_READ_WRITE_TOKEN;
+process.env.BLOB_READ_WRITE_TOKEN='local-mock-blob-token-for-tests-only';
 const app = require('../server-v2');
 Module._load=originalLoad;
 let server, base;
@@ -34,7 +38,11 @@ test.before(async ()=>{
   server=await new Promise(r=>{const s=app.listen(0,'127.0.0.1',()=>r(s));});
   base='http://127.0.0.1:'+server.address().port;
 });
-test.after(async ()=>{if(server)await new Promise((r,j)=>server.close(err=>err?j(err):r()));});
+test.after(async ()=>{
+  if(server)await new Promise((r,j)=>server.close(err=>err?j(err):r()));
+  if(originalBlobToken===undefined)delete process.env.BLOB_READ_WRITE_TOKEN;
+  else process.env.BLOB_READ_WRITE_TOKEN=originalBlobToken;
+});
 async function request(path,opts){
   const response=await fetch(base+path,opts);
   const data=await response.json();
