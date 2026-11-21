@@ -1,7 +1,15 @@
 'use strict';
 const { get, head, put } = require('@vercel/blob');
 const crypto = require('crypto');
+const {readFileSync} = require('node:fs');
+const path = require('node:path');
 const KEY = 'v2/catalog.json';
+const snapshotPath = path.join(__dirname,'migration','catalog-snapshot-2026-11-15.json');
+function readOnlySnapshot(){
+  const list=JSON.parse(readFileSync(snapshotPath,'utf8'));
+  if(!Array.isArray(list))throw new Error('The staging catalog snapshot is invalid');
+  return list.filter(p=>p && p.active!==false);
+}
 let cached = null, cachedAt = 0, cachedEtag = null;
 const asyncRoute = fn => (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const notFound = e => e && (e.name === 'BlobNotFoundError' || e.statusCode === 404 || e.status === 404 || /not found|does not exist|404/i.test(e.message || ''));
@@ -15,6 +23,12 @@ async function readBlob(path) {
   return JSON.parse(await new Response(b.stream).text());
 }
 async function readCatalog(fresh=false) {
+  // Only when no DB and no Vercel Blob credentials exist: expose the committed
+  // PUBLIC product snapshot read-only. Never copy credentials into DADA Cloud,
+  // and never fall back silently when Blob credentials are configured.
+  if(!process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL_OIDC_TOKEN){
+    return readOnlySnapshot();
+  }
   if (!fresh && cached && Date.now()-cachedAt < 7000) return cached;
   try {
     const meta=await head(KEY);
