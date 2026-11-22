@@ -84,7 +84,9 @@ function mountRussianAuth(app){
  });
 };
 
-mountRussianAuth(app);\n\nif(process.env.DATABASE_URL || process.env.POSTGRES_URL){
+mountRussianAuth(app);
+
+if(process.env.DATABASE_URL || process.env.POSTGRES_URL){
   require('./shop-api')(app);
 }else{
   // Catalogue remains online until a separate transactional database is configured.
