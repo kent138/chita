@@ -135,6 +135,34 @@ async function bootstrap() {
         );
       }
     }
+    // One-time non-destructive refresh of the Russian store from the verified
+    // 58-product live snapshot. Existing buyer accounts, carts, favorites and
+    // orders are never modified. Preserve newer edits made directly on DADA.
+    if (!externallyManaged && process.env.SEED_CATALOG_SNAPSHOT==='1') {
+      const snapshot=JSON.parse(readFileSync(
+        path.join(__dirname,'migration','catalog-snapshot-2026-11-22.json'),'utf8'));
+      if(!Array.isArray(snapshot)||snapshot.length!==58||
+         new Set(snapshot.map(p=>p.id)).size!==58||
+         snapshot.some(p=>!Number.isSafeInteger(p.id)||!Array.isArray(p.images)||
+           p.images.length<1||p.images.some(u=>typeof u!=='string'||!u.startsWith('https://'))))
+        throw new Error('58-item source catalog backup is incomplete');
+      for(const p of snapshot) {
+        await c.query(
+          "INSERT INTO shop_products (id,slug,name,description,composition,material,width,price,category,stock,is_popular,images,created_at,updated_at) "+
+          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14) "+
+          "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,"+
+          "composition=EXCLUDED.composition,material=EXCLUDED.material,width=EXCLUDED.width,"+
+          "price=EXCLUDED.price,category=EXCLUDED.category,stock=EXCLUDED.stock,"+
+          "is_popular=EXCLUDED.is_popular,images=EXCLUDED.images,updated_at=EXCLUDED.updated_at "+
+          "WHERE shop_products.updated_at < EXCLUDED.updated_at",
+          [p.id,p.slug,p.name,p.description||'',p.composition||'',p.material||'',p.width||'',
+           Number(p.price),p.category||'',Math.max(0,Number(p.stock)||0),!!p.isPopular,
+           JSON.stringify(p.images),p.createdAt||new Date().toISOString(),p.updatedAt||new Date().toISOString()]
+        );
+      }
+      // New DADA products must not collide with IDs from the migrated catalogue.
+      await c.query("SELECT setval('shop_product_ids', GREATEST(100000,(SELECT COALESCE(max(id),0)+1 FROM shop_products)), false)");
+    }
     await c.query('COMMIT');
   } catch(e) {
     try {await c.query('ROLLBACK');}catch{}
