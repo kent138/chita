@@ -16,7 +16,7 @@ app.use(express.static(path.join(__dirname,'public'),{
   setHeaders(res,p){if(/\.html$/.test(p))res.setHeader('Cache-Control','no-cache');}
 }));
 
-if(process.env.DATABASE_URL || process.env.POSTGRES_URL){
+// Route buyer accounts to the already-tested Russian service; retain existing Vercel catalog.\nrequire('./ru-auth-gateway')(app);\n\nif(process.env.DATABASE_URL || process.env.POSTGRES_URL){
   require('./shop-api')(app);
 }else{
   // Catalogue remains online until a separate transactional database is configured.
