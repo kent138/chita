@@ -16,7 +16,8 @@ app.use(express.static(path.join(__dirname,'public'),{
   setHeaders(res,p){if(/\.html$/.test(p))res.setHeader('Cache-Control','no-cache');}
 }));
 
-// Route buyer accounts to the already-tested Russian service; retain existing Vercel catalog.\n'use strict';
+// Route buyer accounts to the already-tested Russian service; retain existing Vercel catalog.
+'use strict';
 // Server-side same-origin gateway: buyer data is persisted ONLY by the Russian DADA service.
 // Never proxy product or admin routes: Vercel's existing catalogue stays authoritative.
 const REMOTE='https://chita-5949ba.apps.dada-tuda.ru';
