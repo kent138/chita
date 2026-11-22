@@ -33,6 +33,26 @@ async function fetchRemote(path,opts={}){
  return fetch(REMOTE+path,{...opts,redirect:'manual',signal:AbortSignal.timeout(9000)});
 }
 function mountRussianAuth(app){
+ // Read-only diagnostic on preview; never includes credentials or buyer details.
+ app.get('/api/diagnostics/russian-store',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try{
+   const [config,products,me]=await Promise.all([
+    fetchRemote('/api/config'),fetchRemote('/api/products?limit=1&page=1'),
+    fetchRemote('/api/auth/me')
+   ]);
+   const c=config.ok?await config.json():null;
+   const p=products.ok?await products.json():null;
+   res.json({
+    configHttp:config.status,productsHttp:products.status,
+    databaseReady:c?.databaseReady===true,
+    registrationEnabled:c?.customerAccountsEnabled===true,
+    totalProducts:Number.isSafeInteger(p?.total)?p.total:null,
+    unauthenticatedMeHttp:me.status
+   });
+  }catch(e){res.status(503).json({error:'Russian store diagnostic unavailable'});}
+ });
+
  app.get('/api/config',async(req,res,next)=>{
   try{
    const remote=await fetchRemote('/api/config');
