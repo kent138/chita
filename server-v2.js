@@ -62,7 +62,7 @@ function mountRussianAuth(app){
  app.get('/api/diagnostics/public-product-photo',async(req,res)=>{
    try{
     const id=Number(req.query.id);
-    if(![30,60,100008,100011,100014].includes(id))return res.status(404).end();
+    if(![30,60,100008,100011,100014,63,54,52,29,66,31,100000,100009].includes(id))return res.status(404).end();
     const p=await fetchRemote('/api/products/'+id);
     if(!p.ok)return res.status(404).end();
     const product=(await p.json()).product;
