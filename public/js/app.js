@@ -1516,22 +1516,42 @@ function productForm(product = null) {
 
   $('#productForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const form=e.currentTarget;
+    const button=form.querySelector('button[type="submit"]');
+    if(button.disabled)return;
     if(imagePending){toast('Подождите, фотография обрабатывается','error');return;}
-    const f = new FormData(e.target);
-    const body = {
-      name: f.get('name'), description: f.get('description'), composition: f.get('composition'),
-      category: f.get('category'), material: f.get('material'), width: f.get('width'),
-      price: f.get('price'), stock: f.get('stock'),
-      isPopular: $('#pfPop').checked,
-      images: imageData ? [imageData] : (product?.images || [])
-    };
+    const previousLabel=button.textContent;
+    button.disabled=true;
+    button.textContent=isEdit?'Сохраняем изменения…':'Добавляем товар…';
+    const errBox=$('#pfErr');
+    if(errBox){errBox.hidden=true;errBox.textContent='';}
     try {
+      const f = new FormData(form);
+      const body = {
+        name: f.get('name'), description: f.get('description'), composition: f.get('composition'),
+        category: f.get('category'), material: f.get('material'), width: f.get('width'),
+        price: f.get('price'), stock: f.get('stock'),
+        isPopular: $('#pfPop').checked,
+        images: imageData ? [imageData] : (product?.images || [])
+      };
       if (isEdit) await api('/admin/products/' + product.id, { method: 'PUT', admin: true, body });
       else await api('/admin/products', { method: 'POST', admin: true, body });
       toast(isEdit ? 'Товар обновлён' : 'Товар добавлен', 'success');
-      catalogFacets = null; // сбросить кэш фильтров
+      catalogFacets = null;
       openCatalogAdmin();
-    } catch (err) { const el=$('#pfErr'); el.textContent=err.message; el.hidden=false; }
+    } catch (err) {
+      const message=err?.message||'Не удалось сохранить товар. Попробуйте ещё раз.';
+      if(errBox){errBox.textContent=message;errBox.hidden=false;}
+      toast('Не удалось сохранить товар: '+message,'error');
+      // Previously the error was only at the top of a long scrolling form
+      // and was invisible to the administrator who pressed the bottom button.
+      if(errBox)errBox.scrollIntoView({behavior:'smooth',block:'center'});
+    } finally {
+      if(button.isConnected){
+        button.disabled=false;
+        button.textContent=previousLabel;
+      }
+    }
   });
 }
 
