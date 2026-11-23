@@ -35,9 +35,14 @@ async function normalizeImages(raw,id) {
  const uploaded=[];
  for(let i=0;i<raw.length;i++){
    const s=raw[i]; if(typeof s!=='string')throw error('Некорректная фотография');
+   // Existing product media on Vercel must remain accessible after migration.
    if(s.startsWith('https://')){
      const u=new URL(s);
      if(!u.hostname.endsWith('.public.blob.vercel-storage.com'))throw error('Фотографии необходимо загружать через форму');
+     uploaded.push(s);continue;
+   }
+   // Previously uploaded pictures stored in our Russian PostgreSQL database.
+   if(/^\/api\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)){
      uploaded.push(s);continue;
    }
    const m=/^data:image\/(webp|png|jpeg|gif);base64,([a-z0-9+/=\r\n]+)$/i.exec(s);
@@ -50,14 +55,38 @@ async function normalizeImages(raw,id) {
       :ext==='jpg'?buffer[0]===255&&buffer[1]===216
       :buffer.toString('ascii',0,3)==='GIF';
    if(!isValid)throw error('Содержимое фотографии не соответствует формату');
-   const name='v2/media/product-'+id+'-'+crypto.randomUUID()+'.'+ext;
-   const b=await put(name,buffer,{access:'public',contentType:'image/'+m[1].toLowerCase(),
-     addRandomSuffix:false,cacheControlMaxAge:31536000});
-   uploaded.push(b.url);
+   const contentType='image/'+m[1].toLowerCase();
+   // DADA has no Vercel Blob credentials; storing files on the container disk
+   // loses them after redeployment. Save public media durably in PostgreSQL.
+   if(!process.env.BLOB_READ_WRITE_TOKEN && process.env.DB_SCHEMA_MANAGED!=='1'){
+     if(buffer.length>3*1024*1024)
+       throw error('Фото слишком большое. Выберите изображение до 3 МБ или уменьшите его.');
+     const mediaId=crypto.randomUUID();
+     await pool.query('INSERT INTO shop_media (id,content_type,bytes) VALUES ($1,$2,$3)',
+       [mediaId,contentType,buffer]);
+     uploaded.push('/api/media/'+mediaId);
+   }else{
+     const name='v2/media/product-'+id+'-'+crypto.randomUUID()+'.'+ext;
+     const b=await put(name,buffer,{access:'public',contentType,
+       addRandomSuffix:false,cacheControlMaxAge:31536000});
+     uploaded.push(b.url);
+   }
  }
  return uploaded;
 }
 function register(app){
+ // Stable public URLs for product photos on DADA. These are not user documents.
+ app.get('/api/media/:id',wrap(async(req,res)=>{
+   const id=String(req.params.id||'');
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+     throw error('Фотография не найдена',404);
+   const result=await pool.query('SELECT content_type,bytes FROM shop_media WHERE id=$1',[id]);
+   const media=result.rows[0];
+   if(!media)throw error('Фотография не найдена',404);
+   res.set('Cache-Control','public,max-age=31536000,immutable');
+   res.type(media.content_type);
+   res.send(media.bytes);
+ }));
  app.get('/api/products',wrap(async(req,res)=>{
   const conditions=['active=true'],params=[];
   const add=(sql,val)=>{params.push(val);conditions.push(sql.replace(/\?/g,'$'+params.length));};
