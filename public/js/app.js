@@ -1467,18 +1467,56 @@ function productForm(product = null) {
     </form>`);
 
   let imageData = product?.images?.[0] || null;
+  let imagePending = false;
   $('#pfImage').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
     if(file.size>7*1024*1024){toast('Фотография должна быть меньше 7 МБ','error');e.target.value='';return;}
-    const reader = new FileReader();
-    reader.onload = () => { imageData = reader.result;
-      $('#pfPreview').innerHTML = `<img src="${imageData}" style="width:90px;height:90px;object-fit:cover;border-radius:10px">`; };
+    imagePending=true;
+    const saveButton=$('#productForm button[type="submit"]');
+    if(saveButton)saveButton.disabled=true;
+    const finish=(result)=>{
+      imagePending=false;
+      if(saveButton)saveButton.disabled=false;
+      if(!result){toast('Не удалось подготовить фото. Выберите JPG или PNG.','error');return;}
+      const encodedBytes=Math.ceil((result.length-result.indexOf(',')-1)*3/4);
+      if(encodedBytes>3*1024*1024){
+        toast('Фото слишком большое — выберите другое (до 3 МБ после сжатия).','error');
+        return;
+      }
+      imageData=result;
+      $('#pfPreview').innerHTML = `<img src="${imageData}" style="width:90px;height:90px;object-fit:cover;border-radius:10px">`;
+    };
+    const reader=new FileReader();
+    reader.onerror=()=>finish(null);
+    reader.onload=()=>{
+      const original=String(reader.result||'');
+      const img=new Image();
+      img.onerror=()=>finish(/^data:image\/(jpeg|png|webp|gif);base64,/i.test(original)?original:null);
+      img.onload=()=>{
+        try{
+          const scale=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+          canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+          const ctx=canvas.getContext('2d');
+          ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          const optimized=canvas.toDataURL('image/jpeg',0.82);
+          const native=/^data:image\/(jpeg|png|webp|gif);base64,/i.test(original);
+          finish(native&&original.length<=optimized.length?original:optimized);
+        }catch{
+          finish(/^data:image\/(jpeg|png|webp|gif);base64,/i.test(original)?original:null);
+        }
+      };
+      img.src=original;
+    };
     reader.readAsDataURL(file);
   });
 
   $('#productForm').addEventListener('submit', async e => {
     e.preventDefault();
+    if(imagePending){toast('Подождите, фотография обрабатывается','error');return;}
     const f = new FormData(e.target);
     const body = {
       name: f.get('name'), description: f.get('description'), composition: f.get('composition'),
