@@ -23,6 +23,25 @@ app.get('/api/diagnostics/timeweb-dns',async(req,res)=>{
   result.authoritativeTxtFound=records.some(x=>x.startsWith('dada-domain-verify='));
   result.authoritativeRecordCount=records.length;
  }catch(e){result.authoritativeTxtFound=false;result.authoritativeError=e.code||'DNS_ERROR';}
+ for(const kind of ['4','6']){
+  try{
+   result[kind==='4'?'aRecords':'aaaaRecords']=await (kind==='4'?dns.resolve4('matreshka-chita.ru'):dns.resolve6('matreshka-chita.ru'));
+  }catch(e){result[kind==='4'?'aError':'aaaaError']=e.code||'DNS_ERROR';}
+ }
+ try{
+  const ip=(await dns.resolve4('ns1.timeweb.ru'))[0];
+  const resolver=new dns.Resolver({timeout:2500,tries:1});
+  resolver.setServers([ip]);
+  result.authoritativeA=await resolver.resolve4('matreshka-chita.ru');
+  try{result.authoritativeAAAA=await resolver.resolve6('matreshka-chita.ru');}
+  catch(e){result.authoritativeAAAAError=e.code||'DNS_ERROR';}
+ }catch(e){result.authoritativeAError=e.code||'DNS_ERROR';}
+ try{
+   const response=await fetch('https://matreshka-chita.ru/api/config',{redirect:'manual',signal:AbortSignal.timeout(5000)});
+   result.siteHttp=response.status;
+   result.siteContentType=response.headers.get('content-type');
+   result.siteServer=response.headers.get('server');
+ }catch(e){result.siteError=String(e.cause?.code||e.code||e.name).slice(0,60);}
  res.set('Cache-Control','no-store').json(result);
 });
 app.use((req,res,next)=>{
