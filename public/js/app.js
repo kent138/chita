@@ -1400,7 +1400,7 @@ function bulkCatalogKey(name){
 }
 
 async function openBulkImport(){
-  openModal(\`
+  openModal(`
     <h2>📦 Массовая загрузка товаров</h2>
     <p>Выбери подготовленный JSON-файл каталога. Товары добавляются только в текущую базу магазина. Уже существующие товары не удаляются и не изменяются.</p>
     <div class="form-row">
@@ -1411,7 +1411,7 @@ async function openBulkImport(){
     <button id="bulkImportStart" class="btn btn--primary btn--lg" type="button" disabled>Загрузить новые товары</button>
     <div id="bulkImportResults" aria-live="polite" style="white-space:pre-line;margin-top:16px"></div>
     <p class="form-hint">Не закрывай окно до завершения. Если загрузка оборвётся, просто выбери этот же файл и повтори — существующие товары будут пропущены.</p>
-  \`, 'wide');
+  `, 'wide');
   const root=$('#modalContent');
   const fileInput=root.querySelector('#bulkImportFile');
   const start=root.querySelector('#bulkImportStart');
@@ -1470,7 +1470,7 @@ async function openBulkImport(){
       const planned=batch.items.filter(p=>p.import===true);
       if(!window.confirm('Добавить '+planned.length+
            ' товаров из файла? Дубликаты по названию будут пропущены, существующие товары не изменятся.')){
-        results.textContent+='\\nИмпорт отменён.';
+        results.textContent+='\nИмпорт отменён.';
         return;
       }
       for(const p of planned){
@@ -1478,7 +1478,7 @@ async function openBulkImport(){
         const key=bulkCatalogKey(p.name);
         if(existing.has(key)){
           skipped++;
-          results.textContent+='\\nПропущен существующий: №'+p.number+' '+p.name;
+          results.textContent+='\nПропущен существующий: №'+p.number+' '+p.name;
           continue;
         }
         info.textContent='Сохраняем товар №'+p.number+': '+p.name+
@@ -1492,7 +1492,7 @@ async function openBulkImport(){
         await api('/admin/products',{method:'POST',admin:true,body});
         created++;
         existing.add(key);
-        results.textContent+='\\n✅ №'+p.number+' '+p.name;
+        results.textContent+='\n✅ №'+p.number+' '+p.name;
       }
       info.textContent='Импорт завершён! Добавлено: '+created+
         ', пропущено существующих: '+skipped+'.';
@@ -1500,8 +1500,8 @@ async function openBulkImport(){
       toast('Импорт: добавлено '+created+' товаров','success');
     }catch(err){
       info.textContent='Загрузка остановлена после '+created+' добавленных товаров.';
-      results.textContent+='\\n❌ '+(err?.message||'Неизвестная ошибка')+
-        '\\nМожно повторить с тем же файлом — уже сохранённые товары будут пропущены.';
+      results.textContent+='\n❌ '+(err?.message||'Неизвестная ошибка')+
+        '\nМожно повторить с тем же файлом — уже сохранённые товары будут пропущены.';
     }finally{
       if(root.isConnected){start.disabled=false;fileInput.disabled=false;}
     }
