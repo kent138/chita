@@ -4,6 +4,19 @@ const path=require('path');
 const app=express();
 app.disable('x-powered-by');
 app.use(express.json({limit:'16mb'}));
+app.get('/api/diagnostics/timeweb-dns',async(req,res)=>{
+ const dns=require('node:dns').promises;
+ const result={domain:'matreshka-chita.ru'};
+ try{
+  result.nameservers=await dns.resolveNs('matreshka-chita.ru');
+ }catch(e){result.nsError=e.code||'DNS_ERROR';}
+ try{
+  const records=(await dns.resolveTxt('_dada-verify.matreshka-chita.ru')).map(parts=>parts.join(''));
+  result.txtFound=records.some(x=>x.startsWith('dada-domain-verify='));
+  result.txtCount=records.length;
+ }catch(e){result.txtFound=false;result.txtError=e.code||'DNS_ERROR';}
+ res.set('Cache-Control','no-store').json(result);
+});
 app.use((req,res,next)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
