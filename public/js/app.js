@@ -52,7 +52,10 @@ async function api(path, { method = 'GET', body, admin = false } = {}) {
       body:body?JSON.stringify(body):undefined
     });
   } catch (e) {
-    // fetch падает, если сервер не запущен или недоступен
+    // Browser may report a blocked oversized upload as a network error;
+    // avoid blaming the shopper's Internet connection.
+    if(path.startsWith('/admin/products'))
+      throw new Error('Не удалось передать товар на сервер DADA Cloud. Проверьте соединение и попробуйте сохранить ещё раз; если ошибка повторится, сообщите нам.');
     throw new Error('Нет связи с магазином. Проверьте интернет и повторите попытку.');
   }
   const data = await res.json().catch(() => ({}));
@@ -1471,42 +1474,64 @@ function productForm(product = null) {
   $('#pfImage').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    if(file.size>7*1024*1024){toast('Фотография должна быть меньше 7 МБ','error');e.target.value='';return;}
+    if(file.size>10*1024*1024){
+      toast('Фото больше 10 МБ. Выберите другое изображение.','error');
+      e.target.value='';
+      return;
+    }
     imagePending=true;
     const saveButton=$('#productForm button[type="submit"]');
     if(saveButton)saveButton.disabled=true;
-    const finish=(result)=>{
+    const finish=(result,reason='')=>{
       imagePending=false;
       if(saveButton)saveButton.disabled=false;
-      if(!result){toast('Не удалось подготовить фото. Выберите JPG или PNG.','error');return;}
-      const encodedBytes=Math.ceil((result.length-result.indexOf(',')-1)*3/4);
-      if(encodedBytes>3*1024*1024){
-        toast('Фото слишком большое — выберите другое (до 3 МБ после сжатия).','error');
+      if(!result){
+        imageData=null;
+        $('#pfPreview').textContent=reason||'Не удалось подготовить фото. Выберите изображение JPG/PNG.';
+        toast(reason||'Не удалось обработать фото','error');
         return;
       }
       imageData=result;
       $('#pfPreview').innerHTML = `<img src="${imageData}" style="width:90px;height:90px;object-fit:cover;border-radius:10px">`;
     };
     const reader=new FileReader();
-    reader.onerror=()=>finish(null);
+    reader.onerror=()=>finish(null,'Не удалось прочитать фото.');
     reader.onload=()=>{
       const original=String(reader.result||'');
       const img=new Image();
-      img.onerror=()=>finish(/^data:image\/(jpeg|png|webp|gif);base64,/i.test(original)?original:null);
+      img.onerror=()=>finish(null,'Не удалось открыть фото. Выберите изображение JPEG или PNG.');
       img.onload=()=>{
         try{
-          const scale=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));
-          const canvas=document.createElement('canvas');
-          canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
-          canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
-          const ctx=canvas.getContext('2d');
-          ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
-          ctx.drawImage(img,0,0,canvas.width,canvas.height);
-          const optimized=canvas.toDataURL('image/jpeg',0.82);
-          const native=/^data:image\/(jpeg|png|webp|gif);base64,/i.test(original);
-          finish(native&&original.length<=optimized.length?original:optimized);
+          // DADA gateway may reject large JSON request bodies even when Express
+          // accepts them. Always send a compact JPEG rather than the original
+          // iPhone photo (often 1–7 MB after base64 encoding).
+          const targetBytes=145*1024;
+          const longSide=Math.max(img.naturalWidth,img.naturalHeight);
+          let best='';
+          for(const [maxSide,quality] of [[1200,0.73],[1000,0.68],[850,0.62],[700,0.58],[560,0.52],[420,0.45]]){
+            const scale=Math.min(1,maxSide/longSide);
+            const canvas=document.createElement('canvas');
+            canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+            canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+            const ctx=canvas.getContext('2d');
+            if(!ctx)continue;
+            ctx.fillStyle='#ffffff';
+            ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.drawImage(img,0,0,canvas.width,canvas.height);
+            const result=canvas.toDataURL('image/jpeg',quality);
+            if(!result.startsWith('data:image/jpeg;base64,'))continue;
+            if(!best||result.length<best.length)best=result;
+            const actualBytes=Math.ceil((result.length-result.indexOf(',')-1)*3/4);
+            if(actualBytes<=targetBytes){
+              finish(result);
+              return;
+            }
+          }
+          if(best&&Math.ceil((best.length-best.indexOf(',')-1)*3/4)<=210*1024)
+            finish(best);
+          else finish(null,'Фото не удалось уменьшить до безопасного размера. Выберите другое изображение.');
         }catch{
-          finish(/^data:image\/(jpeg|png|webp|gif);base64,/i.test(original)?original:null);
+          finish(null,'Ошибка при уменьшении фотографии. Попробуйте другую фотографию.');
         }
       };
       img.src=original;
