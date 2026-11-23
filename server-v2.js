@@ -15,6 +15,14 @@ app.get('/api/diagnostics/timeweb-dns',async(req,res)=>{
   result.txtFound=records.some(x=>x.startsWith('dada-domain-verify='));
   result.txtCount=records.length;
  }catch(e){result.txtFound=false;result.txtError=e.code||'DNS_ERROR';}
+ try{
+  const ip=(await dns.resolve4('ns1.timeweb.ru'))[0];
+  const resolver=new dns.Resolver({timeout:2000,tries:1});
+  resolver.setServers([ip]);
+  const records=(await resolver.resolveTxt('_dada-verify.matreshka-chita.ru')).map(parts=>parts.join(''));
+  result.authoritativeTxtFound=records.some(x=>x.startsWith('dada-domain-verify='));
+  result.authoritativeRecordCount=records.length;
+ }catch(e){result.authoritativeTxtFound=false;result.authoritativeError=e.code||'DNS_ERROR';}
  res.set('Cache-Control','no-store').json(result);
 });
 app.use((req,res,next)=>{
