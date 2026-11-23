@@ -59,6 +59,23 @@ function mountRussianAuth(app){
   }catch(e){res.status(503).json({error:'Russian store diagnostic unavailable'});}
  });
 
+ app.get('/api/diagnostics/public-product-photo',async(req,res)=>{
+   try{
+    const id=Number(req.query.id);
+    if(![30,60,100008,100011,100014].includes(id))return res.status(404).end();
+    const p=await fetchRemote('/api/products/'+id);
+    if(!p.ok)return res.status(404).end();
+    const product=(await p.json()).product;
+    const url=String(product?.images?.[0]||'');
+    if(!/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//.test(url))
+      return res.status(400).end();
+    const response=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    if(!response.ok)return res.status(502).end();
+    const bytes=Buffer.from(await response.arrayBuffer());
+    if(bytes.length>1024*1024)return res.status(413).end();
+    res.set('Cache-Control','no-store').json({id,image:'data:image/webp;base64,'+bytes.toString('base64')});
+   }catch(e){res.status(503).json({error:'Image unavailable'});}
+ });
  app.get('/api/diagnostics/russian-catalog-names',async(req,res)=>{
    res.set('Cache-Control','no-store');
    try{
