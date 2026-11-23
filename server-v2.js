@@ -16,6 +16,134 @@ app.use(express.static(path.join(__dirname,'public'),{
   setHeaders(res,p){if(/\.html$/.test(p))res.setHeader('Cache-Control','no-cache');}
 }));
 
+// Route buyer accounts to the already-tested Russian service; retain existing Vercel catalog.
+'use strict';
+// Server-side same-origin gateway: buyer data is persisted ONLY by the Russian DADA service.
+// Never proxy product or admin routes: Vercel's existing catalogue stays authoritative.
+const REMOTE='https://chita-5949ba.apps.dada-tuda.ru';
+const methods=new Set(['GET','POST','PUT','DELETE']);
+const paths=new Set(['/register','/login','/logout','/me','/favorites','/cart','/addresses']);
+const remoteUrl=path=>REMOTE+'/api/auth'+path;
+const originAllowed=req=>{
+ const origin=req.get('origin');
+ if(!origin)return true;
+ try {return new URL(origin).host===req.get('host');}catch{return false;}
+};
+async function fetchRemote(path,opts={}){
+ return fetch(REMOTE+path,{...opts,redirect:'manual',signal:AbortSignal.timeout(9000)});
+}
+function mountRussianAuth(app){
+ // Read-only diagnostic on preview; never includes credentials or buyer details.
+ app.get('/api/diagnostics/russian-store',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try{
+   const [config,products,me,media,script]=await Promise.all([
+    fetchRemote('/api/config'),fetchRemote('/api/products?limit=1&page=1'),
+    fetchRemote('/api/auth/me'),
+    fetchRemote('/api/media/00000000-0000-4000-8000-000000000000'),
+    fetchRemote('/js/app.js?version-check=20261123')
+   ]);
+   const c=config.ok?await config.json():null;
+   const p=products.ok?await products.json():null;
+   const mediaError=await media.json().catch(()=>({}));
+   const js=script.ok?await script.text():'';
+   res.json({
+    configHttp:config.status,productsHttp:products.status,
+    databaseReady:c?.databaseReady===true,
+    registrationEnabled:c?.customerAccountsEnabled===true,
+    totalProducts:Number.isSafeInteger(p?.total)?p.total:null,
+    unauthenticatedMeHttp:me.status,
+    mediaHttp:media.status,mediaError:String(mediaError.error||'').slice(0,100),
+    scriptHttp:script.status,hasUpdatedImageForm:js.includes('let imagePending = false;')
+   });
+  }catch(e){res.status(503).json({error:'Russian store diagnostic unavailable'});}
+ });
+
+ app.get('/api/diagnostics/public-product-photo',async(req,res)=>{
+   try{
+    const id=Number(req.query.id);
+    if(![30,60,100008,100011,100014,63,54,52,29,66,31,100000,100009].includes(id))return res.status(404).end();
+    const p=await fetchRemote('/api/products/'+id);
+    if(!p.ok)return res.status(404).end();
+    const product=(await p.json()).product;
+    const url=String(product?.images?.[0]||'');
+    if(!/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//.test(url))
+      return res.status(400).end();
+    const response=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    if(!response.ok)return res.status(502).end();
+    const bytes=Buffer.from(await response.arrayBuffer());
+    if(bytes.length>1024*1024)return res.status(413).end();
+    res.set('Cache-Control','no-store').json({id,image:'data:image/webp;base64,'+bytes.toString('base64')});
+   }catch(e){res.status(503).json({error:'Image unavailable'});}
+ });
+ app.get('/api/diagnostics/russian-catalog-names',async(req,res)=>{
+   res.set('Cache-Control','no-store');
+   try{
+    const responses=await Promise.all([1,2].map(page=>fetchRemote('/api/products?limit=48&page='+page)));
+    if(responses.some(r=>!r.ok))throw Error('Catalog temporarily inaccessible');
+    const pages=await Promise.all(responses.map(r=>r.json()));
+    res.json({
+     total:pages[0].total,
+     items:pages.flatMap(x=>x.items).map(p=>({
+       id:p.id,name:p.name,slug:p.slug,price:p.price,
+       category:p.category,stock:p.stock,imageUrl:p.images?.[0]||''
+     }))
+    });
+   }catch(e){res.status(503).json({error:'Catalog unavailable'});}
+ });
+ app.get('/api/config',async(req,res,next)=>{
+  try{
+   const remote=await fetchRemote('/api/config');
+   if(!remote.ok)throw new Error('Russian account service unavailable');
+   const cfg=await remote.json();
+   if(cfg.databaseReady!==true||cfg.customerAccountsEnabled!==true)
+    throw new Error('Russian account service not ready');
+   // The product catalogue and admin panel still belong to Vercel/Supabase.
+   res.set('Cache-Control','no-store').json({
+    version:'2.1',databaseReady:true,acceptingOrders:false,
+    adminConfigured:true,customerAccountsEnabled:true,
+    cloudAccountsEnabled:false,cloudAccountApiBase:'',
+    sellerReady:!!cfg.sellerReady,seller:cfg.seller||null,
+    paymentMethods:['При получении','Согласовать с магазином'],
+    paymentsOnline:false,shippingPrice:'Уточняется магазином при подтверждении'
+   });
+  }catch(e){
+   // Fail closed: no buyer data is accepted by the Swedish catalogue DB.
+   res.set('Cache-Control','no-store').json({
+    version:'2.1',databaseReady:true,acceptingOrders:false,
+    customerAccountsEnabled:false,cloudAccountsEnabled:false,
+    adminConfigured:true,sellerReady:false,seller:null,
+    message:'Сервис регистрации временно недоступен'
+   });
+  }
+ });
+ app.use('/api/auth',async(req,res)=>{
+  if(!methods.has(req.method)||!paths.has(req.path))
+   return res.status(404).json({error:'Неизвестный запрос'});
+  if(!originAllowed(req))return res.status(403).json({error:'Запрос с другого сайта запрещён'});
+  try{
+   const headers={'accept':'application/json'};
+   if(req.get('cookie'))headers.cookie=req.get('cookie');
+   if(req.method!=='GET')headers['content-type']='application/json';
+   const upstream=await fetch(remoteUrl(req.path),{
+    method:req.method,headers,
+    body:req.method==='GET'?undefined:JSON.stringify(req.body||{}),
+    redirect:'manual',signal:AbortSignal.timeout(12000)
+   });
+   res.status(upstream.status);
+   res.set('Cache-Control','no-store');
+   const cookie=upstream.headers.get('set-cookie');
+   if(cookie)res.append('Set-Cookie',cookie);
+   res.type('application/json');
+   res.send(await upstream.text());
+  }catch(e){
+   res.status(503).json({error:'Сервис регистрации временно недоступен'});
+  }
+ });
+};
+
+mountRussianAuth(app);
+
 if(process.env.DATABASE_URL || process.env.POSTGRES_URL){
   require('./shop-api')(app);
 }else{
