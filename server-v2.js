@@ -69,7 +69,7 @@ function mountRussianAuth(app){
      total:pages[0].total,
      items:pages.flatMap(x=>x.items).map(p=>({
        id:p.id,name:p.name,slug:p.slug,price:p.price,
-       category:p.category,stock:p.stock
+       category:p.category,stock:p.stock,imageUrl:p.images?.[0]||''
      }))
     });
    }catch(e){res.status(503).json({error:'Catalog unavailable'});}
