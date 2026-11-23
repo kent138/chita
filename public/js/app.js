@@ -1343,6 +1343,7 @@ async function openCatalogAdmin() {
       <span class="catalog__count" id="admProductCount">Загрузка…</span>
       <input id="adminSearch" type="search" placeholder="Поиск по каталогу…" aria-label="Поиск товаров">
       <button class="btn btn--primary" id="addProductBtn">+ Добавить товар</button>
+      <button class="btn btn--ghost" id="importProductsBtn" type="button">⬆ Импорт каталога</button>
     </div>
     <div style="overflow-x:auto">
       <table class="admin-table">
@@ -1383,12 +1384,128 @@ async function openCatalogAdmin() {
     }
   };
   root.querySelector('#addProductBtn').addEventListener('click',()=>productForm());
+  root.querySelector('#importProductsBtn').addEventListener('click',()=>openBulkImport());
   root.querySelector('#admPrev').addEventListener('click',()=>{currentPage=Math.max(1,currentPage-1);load();});
   root.querySelector('#admNext').addEventListener('click',()=>{currentPage++;load();});
   root.querySelector('#adminSearch').addEventListener('input',()=>{
     clearTimeout(searchTimer);currentPage=1;searchTimer=setTimeout(load,250);
   });
   load();
+}
+
+
+function bulkCatalogKey(name){
+  return String(name||'').toLocaleLowerCase('ru').replace(/ё/g,'е')
+    .replace(/[^а-яa-z0-9]+/g,'');
+}
+
+async function openBulkImport(){
+  openModal(\`
+    <h2>📦 Массовая загрузка товаров</h2>
+    <p>Выбери подготовленный JSON-файл каталога. Товары добавляются только в текущую базу магазина. Уже существующие товары не удаляются и не изменяются.</p>
+    <div class="form-row">
+      <label for="bulkImportFile">Файл каталога (.json)</label>
+      <input id="bulkImportFile" type="file" accept=".json,application/json">
+    </div>
+    <p id="bulkImportInfo" style="color:var(--ink-soft)" aria-live="polite">Выбери файл для предварительной проверки.</p>
+    <button id="bulkImportStart" class="btn btn--primary btn--lg" type="button" disabled>Загрузить новые товары</button>
+    <div id="bulkImportResults" aria-live="polite" style="white-space:pre-line;margin-top:16px"></div>
+    <p class="form-hint">Не закрывай окно до завершения. Если загрузка оборвётся, просто выбери этот же файл и повтори — существующие товары будут пропущены.</p>
+  \`, 'wide');
+  const root=$('#modalContent');
+  const fileInput=root.querySelector('#bulkImportFile');
+  const start=root.querySelector('#bulkImportStart');
+  const info=root.querySelector('#bulkImportInfo');
+  const results=root.querySelector('#bulkImportResults');
+  let batch=null;
+  fileInput.addEventListener('change',async()=>{
+    batch=null;start.disabled=true;results.textContent='';
+    const file=fileInput.files?.[0];
+    if(!file)return;
+    try{
+      if(file.size>12*1024*1024)throw Error('Файл больше 12 МБ. Уменьши фотографии.');
+      const data=JSON.parse(await file.text());
+      if(data.format!=='matreshka-bulk-import-v1'||!Array.isArray(data.items)||
+        !data.items.length||data.items.length>100)
+        throw Error('Неверный формат файла. Нужен каталог «matreshka-bulk-import-v1».');
+      const seen=new Set();
+      for(const p of data.items){
+        if(typeof p.name!=='string'||p.name.length<2||p.name.length>250||
+          typeof p.description!=='string'||p.description.length>10000||
+          !Number.isSafeInteger(p.number)||
+          !Array.isArray(p.images)||p.images.length!==1||
+          typeof p.images[0]!=='string'||p.images[0].length>300000||
+          !/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(p.images[0]))
+          throw Error('Неверные данные товара №'+(p.number||'?'));
+        if(seen.has(p.number))throw Error('Повтор номера '+p.number);
+        seen.add(p.number);
+        if(p.import===true && !(Number.isFinite(p.price)&&p.price>0))
+          throw Error('У товара №'+p.number+' не указана цена.');
+      }
+      batch=data;
+      const ready=data.items.filter(p=>p.import===true);
+      const skipped=data.items.filter(p=>p.import!==true);
+      info.textContent='Проверено: '+data.items.length+' товаров. Для загрузки: '+
+        ready.length+'. Отложено или уже существует: '+skipped.length+'.';
+      results.textContent=skipped.map(p=>'Пропуск №'+p.number+': '+(p.skipReason||'не выбран для импорта')).join('\n');
+      start.disabled=ready.length===0;
+    }catch(err){
+      info.textContent='Ошибка файла: '+err.message;
+    }
+  });
+  start.addEventListener('click',async()=>{
+    if(!batch||start.disabled)return;
+    start.disabled=true;fileInput.disabled=true;
+    let created=0,skipped=0;
+    try{
+      const existing=new Set();
+      let page=1;
+      while(page<=100){
+        const response=await api('/admin/products?page='+page+'&limit=100',{admin:true});
+        if(!Array.isArray(response.items))throw Error('Не удалось проверить существующие товары.');
+        response.items.forEach(p=>existing.add(bulkCatalogKey(p.name)));
+        if(page>=Number(response.pages||1))break;
+        page++;
+      }
+      const planned=batch.items.filter(p=>p.import===true);
+      if(!window.confirm('Добавить '+planned.length+
+           ' товаров из файла? Дубликаты по названию будут пропущены, существующие товары не изменятся.')){
+        results.textContent+='\\nИмпорт отменён.';
+        return;
+      }
+      for(const p of planned){
+        if(!root.isConnected)throw Error('Окно импорта закрыто.');
+        const key=bulkCatalogKey(p.name);
+        if(existing.has(key)){
+          skipped++;
+          results.textContent+='\\nПропущен существующий: №'+p.number+' '+p.name;
+          continue;
+        }
+        info.textContent='Сохраняем товар №'+p.number+': '+p.name+
+          ' ('+(created+skipped+1)+' из '+planned.length+')';
+        const body={
+          name:p.name,description:p.description,composition:String(p.composition||''),
+          category:String(p.category||'Ткани'),material:String(p.material||''),
+          width:String(p.width||''),price:Number(p.price),
+          stock:6,isPopular:!!p.isPopular,images:p.images
+        };
+        await api('/admin/products',{method:'POST',admin:true,body});
+        created++;
+        existing.add(key);
+        results.textContent+='\\n✅ №'+p.number+' '+p.name;
+      }
+      info.textContent='Импорт завершён! Добавлено: '+created+
+        ', пропущено существующих: '+skipped+'.';
+      catalogFacets=null;
+      toast('Импорт: добавлено '+created+' товаров','success');
+    }catch(err){
+      info.textContent='Загрузка остановлена после '+created+' добавленных товаров.';
+      results.textContent+='\\n❌ '+(err?.message||'Неизвестная ошибка')+
+        '\\nМожно повторить с тем же файлом — уже сохранённые товары будут пропущены.';
+    }finally{
+      if(root.isConnected){start.disabled=false;fileInput.disabled=false;}
+    }
+  });
 }
 
 // Catalogue-only mode: show an actual useful overview instead of an empty menu.
