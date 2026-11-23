@@ -59,6 +59,21 @@ function mountRussianAuth(app){
   }catch(e){res.status(503).json({error:'Russian store diagnostic unavailable'});}
  });
 
+ app.get('/api/diagnostics/russian-catalog-names',async(req,res)=>{
+   res.set('Cache-Control','no-store');
+   try{
+    const responses=await Promise.all([1,2].map(page=>fetchRemote('/api/products?limit=48&page='+page)));
+    if(responses.some(r=>!r.ok))throw Error('Catalog temporarily inaccessible');
+    const pages=await Promise.all(responses.map(r=>r.json()));
+    res.json({
+     total:pages[0].total,
+     items:pages.flatMap(x=>x.items).map(p=>({
+       id:p.id,name:p.name,slug:p.slug,price:p.price,
+       category:p.category,stock:p.stock
+     }))
+    });
+   }catch(e){res.status(503).json({error:'Catalog unavailable'});}
+ });
  app.get('/api/config',async(req,res,next)=>{
   try{
    const remote=await fetchRemote('/api/config');
