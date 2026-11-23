@@ -13,7 +13,7 @@ app.use((req,res,next)=>{
 });
 app.use(express.static(path.join(__dirname,'public'),{
   maxAge:'1h',
-  setHeaders(res,p){if(/\.html$/.test(p))res.setHeader('Cache-Control','no-cache');}
+  setHeaders(res,p){if(/\.html$|\/js\/app\.js$/.test(p))res.setHeader('Cache-Control','no-cache');}
 }));
 
 if(process.env.DATABASE_URL || process.env.POSTGRES_URL){
