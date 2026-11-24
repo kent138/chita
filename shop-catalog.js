@@ -14,9 +14,9 @@ const productCols='id,slug,name,description,composition,material,width,price,cat
 // Keep other fibers in mixtures distinct; e.g. "Вискоза, П/Э" -> "Вискозо, П/Э".
 function normalizedMaterialLabel(value){
  return String(value||'').trim()
-   .replace(/\\s+/gu,' ')
-   .replace(/\\s*,\\s*/gu,', ')
-   .replace(/\\s*\\.+\\s*$/gu,'')
+   .replace(/\s+/gu,' ')
+   .replace(/\s*,\s*/gu,', ')
+   .replace(/\s*\.+\s*$/gu,'')
    .replace(/вискоз[ао](?![а-яё])/giu,'Вискозо');
 }
 
