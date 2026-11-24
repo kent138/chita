@@ -10,6 +10,16 @@ const slugify=(text)=>{
    .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'tovar';
 };
 const productCols='id,slug,name,description,composition,material,width,price,category,stock,is_popular,images,created_at,updated_at';
+// Unify legacy material spellings for the storefront without mutating product records.
+// Keep other fibers in mixtures distinct; e.g. "Вискоза, П/Э" -> "Вискозо, П/Э".
+function normalizedMaterialLabel(value){
+ return String(value||'').trim()
+   .replace(/\\s+/gu,' ')
+   .replace(/\\s*,\\s*/gu,', ')
+   .replace(/\\s*\\.+\\s*$/gu,'')
+   .replace(/вискоз[ао](?![а-яё])/giu,'Вискозо');
+}
+
 const validNumber=(n,min,max,field)=>{
  const v=Number(n); if(!Number.isFinite(v)||v<min||v>max)throw error('Некорректное поле: '+field);
  return v;
@@ -91,7 +101,13 @@ function register(app){
   const conditions=['active=true'],params=[];
   const add=(sql,val)=>{params.push(val);conditions.push(sql.replace(/\?/g,'$'+params.length));};
   if(req.query.category)add('category=?',String(req.query.category).slice(0,150));
-  if(req.query.material)add('material=?',String(req.query.material).slice(0,150));
+  if(req.query.material){
+    const requested=normalizedMaterialLabel(String(req.query.material).slice(0,150));
+    const variants=await pool.query("SELECT DISTINCT material FROM shop_products WHERE active=true AND material<>''");
+    const aliases=variants.rows.map(r=>r.material)
+      .filter(m=>normalizedMaterialLabel(m)===requested);
+    add('material=ANY(?::text[])',aliases);
+  }
   if(req.query.minPrice!==undefined&&req.query.minPrice!=='')add('price>=?',validNumber(req.query.minPrice,0,100000000,'цена'));
   if(req.query.maxPrice!==undefined&&req.query.maxPrice!=='')add('price<=?',validNumber(req.query.maxPrice,0,100000000,'цена'));
   if(req.query.inStock==='1')conditions.push('stock>0');
@@ -119,7 +135,9 @@ function register(app){
      pool.query("SELECT DISTINCT material FROM shop_products WHERE active=true AND material<>'' ORDER BY material"),
      pool.query('SELECT min(price) AS min,max(price) AS max FROM shop_products WHERE active=true')
    ]);
-   res.json({categories:cats.rows.map(r=>r.category),materials:mats.rows.map(r=>r.material),
+   const materials=[...new Set(mats.rows.map(r=>normalizedMaterialLabel(r.material)).filter(Boolean))]
+     .sort((a,b)=>a.localeCompare(b,'ru'));
+   res.json({categories:cats.rows.map(r=>r.category),materials,
      priceMin:Number(ranges.rows[0].min)||0,priceMax:Number(ranges.rows[0].max)||0});
  }));
  app.get('/api/products/suggest',wrap(async(req,res)=>{
@@ -195,4 +213,4 @@ function register(app){
    res.json({ok:true});
  }));
 }
-module.exports={register,normalizeImages,productData};
+module.exports={register,normalizeImages,productData,normalizedMaterialLabel};
